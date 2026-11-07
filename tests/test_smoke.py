@@ -19,13 +19,13 @@ def test_vault_structure_and_validity():
     vault_path = Path("vault.json")
     assert vault_path.exists(), "vault.json must be present in the repository root"
 
-    with open(vault_path, encoding="utf-8") as f:
-        data = json.load(f)
+    with open(vault_path, encoding="utf-8") as vault_file:
+        data = json.load(vault_file)
 
     # In Termux-Sentinel, vault.json stores a list of shield definitions
     assert isinstance(data, (list, dict)), "vault.json root must be a list or dict"
     if isinstance(data, list):
-        assert len(data) > 0, "vault.json should contain default shield definitions"
+        assert bool(data), "vault.json should contain default shield definitions"
         first_item = data[0]
         assert "name" in first_item
         assert "pattern" in first_item

@@ -19,30 +19,30 @@ echo "[1/4] Backing up WhatsApp & Telegram..."
 
 # WhatsApp Media
 if [ -d "$LOCAL_STORAGE/Android/media/com.whatsapp" ]; then
-  echo "-> Uploading WhatsApp Media..."
-  rclone copy "$LOCAL_STORAGE/Android/media/com.whatsapp" \
-    "$BASE_REMOTE/What & Tell_Back-up/WhatsApp/Media" --fast-list -P -v
+	echo "-> Uploading WhatsApp Media..."
+	rclone copy "$LOCAL_STORAGE/Android/media/com.whatsapp" \
+		"$BASE_REMOTE/What & Tell_Back-up/WhatsApp/Media" --fast-list -P -v
 fi
 
 # WhatsApp Data (attempts read; logs warning if restricted by OS)
 if [ -d "$LOCAL_STORAGE/Android/data/com.whatsapp" ]; then
-  echo "-> Uploading WhatsApp Data..."
-  rclone copy "$LOCAL_STORAGE/Android/data/com.whatsapp" \
-    "$BASE_REMOTE/What & Tell_Back-up/WhatsApp/Data" --fast-list -P -v 2>/dev/null || echo "Skipping restricted WhatsApp data directory."
+	echo "-> Uploading WhatsApp Data..."
+	rclone copy "$LOCAL_STORAGE/Android/data/com.whatsapp" \
+		"$BASE_REMOTE/What & Tell_Back-up/WhatsApp/Data" --fast-list -P -v 2>/dev/null || echo "Skipping restricted WhatsApp data directory."
 fi
 
 # Telegram Data
 if [ -d "$LOCAL_STORAGE/Android/data/org.telegram.messenger" ]; then
-  echo "-> Uploading Telegram App Data..."
-  rclone copy "$LOCAL_STORAGE/Android/data/org.telegram.messenger" \
-    "$BASE_REMOTE/What & Tell_Back-up/Telegram/Data" --fast-list -P -v 2>/dev/null || echo "Skipping restricted Telegram data directory."
+	echo "-> Uploading Telegram App Data..."
+	rclone copy "$LOCAL_STORAGE/Android/data/org.telegram.messenger" \
+		"$BASE_REMOTE/What & Tell_Back-up/Telegram/Data" --fast-list -P -v 2>/dev/null || echo "Skipping restricted Telegram data directory."
 fi
 
 # Telegram Public Media (Documents, Images, Video)
 if [ -d "$LOCAL_STORAGE/Telegram" ]; then
-  echo "-> Uploading Telegram Shared Media..."
-  rclone copy "$LOCAL_STORAGE/Telegram" \
-    "$BASE_REMOTE/What & Tell_Back-up/Telegram/Media" --fast-list -P -v
+	echo "-> Uploading Telegram Shared Media..."
+	rclone copy "$LOCAL_STORAGE/Telegram" \
+		"$BASE_REMOTE/What & Tell_Back-up/Telegram/Media" --fast-list -P -v
 fi
 
 # -------------------------------------------------------------------------
@@ -53,10 +53,10 @@ echo "[2/4] Mirroring Phone Storage (Excluding /Android)..."
 # Uses copy to preserve original structure; frees space safely
 # To delete local files after upload to save storage, change 'copy' to 'move'
 rclone copy "$LOCAL_STORAGE" "$BASE_REMOTE" \
-  --exclude "/Android/**" \
-  --exclude ".thumbnails/**" \
-  --exclude "Telegram/**" \
-  --fast-list -P -v
+	--exclude "/Android/**" \
+	--exclude ".thumbnails/**" \
+	--exclude "Telegram/**" \
+	--fast-list -P -v
 
 # -------------------------------------------------------------------------
 # 3. PROOT-DISTRO UBUNTU WORKSPACE
@@ -64,10 +64,10 @@ rclone copy "$LOCAL_STORAGE" "$BASE_REMOTE" \
 echo ""
 echo "[3/4] Migrating Ubuntu Rootfs Projects / Data..."
 if [ -d "$UBUNTU_PATH/root" ]; then
-  rclone move "$UBUNTU_PATH/root" "$BASE_REMOTE/Ubuntu_Root" \
-    --fast-list -P -v \
-    --exclude ".cache/**" \
-    --exclude ".local/share/Trash/**"
+	rclone move "$UBUNTU_PATH/root" "$BASE_REMOTE/Ubuntu_Root" \
+		--fast-list -P -v \
+		--exclude ".cache/**" \
+		--exclude ".local/share/Trash/**"
 fi
 
 # -------------------------------------------------------------------------
@@ -76,7 +76,7 @@ fi
 echo ""
 echo "[4/4] Migrating Termux Native Directory..."
 if [ -d "$HOME/projects" ]; then
-  rclone move "$HOME/projects" "$BASE_REMOTE/Termux_Projects" --fast-list -P -v
+	rclone move "$HOME/projects" "$BASE_REMOTE/Termux_Projects" --fast-list -P -v
 fi
 
 echo ""

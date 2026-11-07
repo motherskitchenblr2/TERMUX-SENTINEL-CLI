@@ -116,8 +116,8 @@ def load_vault():
         save_vault(DEFAULT_VAULT_ITEMS)
         return list(DEFAULT_VAULT_ITEMS)
     try:
-        with open(VAULT_FILE) as f:
-            data = json.load(f)
+        with open(VAULT_FILE, encoding="utf-8") as vault_file:
+            data = json.load(vault_file)
             if isinstance(data, list):
                 # Ensure core items are present
                 existing_patterns = {it.get("pattern", "").lower() for it in data}
@@ -412,7 +412,8 @@ def get_dir_size(path):
     if not os.path.exists(path):
         return 0
     try:
-        out = subprocess.check_output(["du", "-sk", path], stderr=subprocess.DEVNULL, timeout=1.8)
+        du_path = shutil.which("du") or "du"
+        out = subprocess.check_output([du_path, "-sk", path], stderr=subprocess.DEVNULL, timeout=1.8)  # nosec B603, B607
         return int(out.split()[0]) * 1024
     except Exception:
         try:
@@ -973,8 +974,8 @@ def scan_bot_scripts():
                         reason = "Filename matches Bot/Telegram"
                     else:
                         try:
-                            with open(fpath, errors="ignore") as f:
-                                head = f.read(2048)
+                            with open(fpath, encoding="utf-8", errors="ignore") as bot_file:
+                                head = bot_file.read(2048)
                                 for pat in BOT_PATTERNS:
                                     m = pat.search(head)
                                     if m:
