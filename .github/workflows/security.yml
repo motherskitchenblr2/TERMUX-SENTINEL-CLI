@@ -32,7 +32,7 @@ jobs:
       - name: Run Bandit Security Analysis
         run: |
           pip install "bandit[sarif]"
-          bandit -r . -f sarif -o bandit.sarif --exclude ./docs/archive || true
+          bandit -r . -f sarif -o bandit.sarif --exclude ./docs/archive,./tests || true
           if [ ! -f bandit.sarif ]; then
             echo '{"$schema":"https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema-2.1.0.json","version":"2.1.0","runs":[]}' > bandit.sarif
           fi

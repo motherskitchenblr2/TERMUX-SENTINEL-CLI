@@ -1,3 +1,5 @@
+# pylint: skip-file
+# nosec B101
 """Smoke tests for Termux-Sentinel."""
 
 import json

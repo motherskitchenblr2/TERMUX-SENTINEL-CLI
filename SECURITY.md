@@ -28,4 +28,4 @@ Termux-Sentinel, please report it to us as described below.
 - **Vault Protection:** Path targets registered in `vault.json` are strictly
   immutable against bulk deletion commands (`clean`, `purge`).
 - **No Secret Leakage:** Do not commit actual `rclone.conf` credentials or API
-  keys. Always use `rclone.conf.template` for distributed configurations.
+  keys; use `rclone.conf.template` when providing distributed configurations.

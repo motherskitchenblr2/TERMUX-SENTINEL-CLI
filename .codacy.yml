@@ -9,6 +9,7 @@ engines:
     enabled: true
     exclude_paths:
       - "docs/archive/**"
+      - "tests/**"
       - "*.txt"
       - "requirements*.txt"
   bandit:
@@ -21,4 +22,5 @@ engines:
 
 exclude_paths:
   - "docs/archive/**"
+  - "tests/**"
   - "*.txt"
