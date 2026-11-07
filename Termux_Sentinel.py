@@ -413,7 +413,9 @@ def get_dir_size(path):
         return 0
     try:
         du_path = shutil.which("du") or "du"
-        out = subprocess.check_output([du_path, "-sk", path], stderr=subprocess.DEVNULL, timeout=1.8)  # nosec B603, B607
+        out = subprocess.check_output(
+            [du_path, "-sk", path], stderr=subprocess.DEVNULL, timeout=1.8
+        )  # nosec B603, B607
         return int(out.split()[0]) * 1024
     except Exception:
         try:
