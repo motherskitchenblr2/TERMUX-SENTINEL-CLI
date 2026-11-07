@@ -41,7 +41,7 @@ jobs:
         run: pyupgrade --py310-plus $(find . -name '*.py') || true
 
       - name: Commit fixes
-        uses: stefanzweifel/git-auto-commit-action@v5
+        uses: stefanzweifel/git-auto-commit-action@d0b01107b5db882071f96de5dd4b54961ea93f4c # v7.0.0
         with:
           commit_message: "style: auto-fix Python syntax & formatting"
           branch: ${{ github.head_ref }}
@@ -62,7 +62,7 @@ jobs:
           sh_checker_only_diff: false
 
       - name: Commit shfmt fixes
-        uses: stefanzweifel/git-auto-commit-action@v5
+        uses: stefanzweifel/git-auto-commit-action@d0b01107b5db882071f96de5dd4b54961ea93f4c # v7.0.0
         with:
           commit_message: "style: auto-format shell scripts"
           branch: ${{ github.head_ref }}
