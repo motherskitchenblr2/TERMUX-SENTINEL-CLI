@@ -1,0 +1,26 @@
+---
+engines:
+  duplication:
+    enabled: true
+    exclude_paths:
+      - "docs/archive/**"
+      - "tests/**"
+  pylint:
+    enabled: true
+    exclude_paths:
+      - "docs/archive/**"
+      - "tests/**"
+      - "*.txt"
+      - "requirements*.txt"
+  bandit:
+    enabled: true
+    exclude_paths:
+      - "docs/archive/**"
+      - "tests/**"
+  shellcheck:
+    enabled: true
+
+exclude_paths:
+  - "docs/archive/**"
+  - "tests/**"
+  - "*.txt"

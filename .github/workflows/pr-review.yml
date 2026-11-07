@@ -23,14 +23,12 @@ jobs:
       - name: Install Ruff
         run: pip install ruff
 
-      - name: Run Ruff with reviewdog
-        uses: reviewdog/action-ruff@v1
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          reporter: github-pr-review
-          level: warning
-          filter_mode: added
-          fail_on_error: false
+      - name: Run Ruff (GitHub annotations)
+        run: ruff check . --output-format=github --exit-zero
+
+      - name: Run Ruff format check (informational)
+        continue-on-error: true
+        run: ruff format --check .
 
   review-shell:
     runs-on: ubuntu-latest

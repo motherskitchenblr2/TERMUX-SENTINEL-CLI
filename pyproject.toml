@@ -1,0 +1,80 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "termux-sentinel"
+version = "1.0.0"
+description = "Android Termux maintenance, automated debris cleaner, daemon watchdog, cloud sync & security vault CLI/TUI"
+readme = "README.md"
+requires-python = ">=3.9"
+license = {text = "Apache-2.0"}
+authors = [
+    {name = "Mothers Kitchen", email = "pasha0118@gmail.com"}
+]
+keywords = ["termux", "android", "cli", "tui", "system-cleaner", "sentinel", "rclone"]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Intended Audience :: System Administrators",
+    "License :: OSI Approved :: Apache Software License",
+    "Operating System :: POSIX :: Linux",
+    "Operating System :: Android",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: System :: Systems Administration",
+    "Topic :: Utilities"
+]
+dependencies = [
+    "rich>=13.7,<14",
+    "prompt_toolkit>=3.0,<4",
+    "psutil>=5.9,<7",
+    "pyyaml>=6.0,<7"
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "ruff>=0.3",
+    "black>=24.2",
+    "mypy>=1.8",
+    "bandit>=1.7",
+    "types-PyYAML>=6.0",
+    "types-psutil>=5.9",
+    "pip-tools>=7.3"
+]
+
+[project.scripts]
+sentinel = "Termux_Sentinel:cli_entrypoint"
+termux-sentinel = "Termux_Sentinel:cli_entrypoint"
+
+[tool.setuptools]
+py-modules = ["Termux_Sentinel"]
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+addopts = "-ra -q --ignore=docs/archive"
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py39"
+
+[tool.black]
+line-length = 100
+target-version = ['py39', 'py310', 'py311', 'py312']
+
+[tool.mypy]
+python_version = "3.9"
+warn_return_any = false
+warn_unused_configs = true
+ignore_missing_imports = true
+
+[tool.bandit]
+exclude_dirs = ["tests", "docs/archive"]
+skips = ["B101"]

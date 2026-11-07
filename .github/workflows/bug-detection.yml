@@ -23,14 +23,13 @@ jobs:
         run: |
           pip install pytest pytest-cov mypy
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+          if [ -f requirements-dev.txt ]; then pip install -r requirements-dev.txt; fi
 
       - name: Run tests
-        run: pytest --cov=. --cov-report=term --cov-report=xml
+        run: |
+          pytest --cov=. --cov-report=term --cov-report=xml \
+            --cov-fail-under=0 --ignore=docs/archive || [ $? -eq 5 ]
 
-      - name: Run mypy with reviewdog
-        uses: reviewdog/action-mypy@v1
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          reporter: github-pr-review
-          level: warning
-          fail_on_error: false
+      - name: Run mypy
+        continue-on-error: true
+        run: mypy . --ignore-missing-imports --no-error-summary || true

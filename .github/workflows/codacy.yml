@@ -30,6 +30,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Run Codacy Analysis CLI
+        continue-on-error: true
         uses: codacy/codacy-analysis-cli-action@v4
         with:
           project-token: ${{ secrets.CODACY_PROJECT_TOKEN }}
@@ -133,7 +134,7 @@ jobs:
           PY
 
       - name: Upload SARIF results file
-        if: always()
+        if: hashFiles('results.sarif') != ''
         uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: results.sarif

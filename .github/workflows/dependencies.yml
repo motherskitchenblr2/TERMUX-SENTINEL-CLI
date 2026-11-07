@@ -14,38 +14,26 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
       - uses: actions/setup-python@v5
         with:
           python-version: '3.10'
 
-      - name: Update Python dependencies
-        uses: lfreleng-actions/python-dependencies-update-action@main
-        with:
-          # Adjust if you use pyproject.toml / uv.lock
-          requirements_file: requirements.txt
-          create_pr: true
-          pr_title: "chore(deps): automated dependency update"
-          pr_body: "Dependencies were updated automatically by the scheduled workflow."
-          branch: deps/weekly-update
-          commit_message: "chore(deps): update Python packages"
+      - name: Install pip-tools
+        run: pip install --upgrade pip pip-tools
 
-      - name: Update GitHub Actions versions
-        uses: actions/checkout@v4
-      - run: |
-          curl -sSL https://github.com/actions-updater/actions-updater/releases/latest/download/actions-updater-linux-amd64 -o /usr/local/bin/actions-updater
-          chmod +x /usr/local/bin/actions-updater
-          actions-updater
-        continue-on-error: true
+      - name: Compile and update requirements
+        run: |
+          pip-compile --upgrade -o requirements.txt pyproject.toml
+          pip-compile --extra dev --upgrade -o requirements-dev.txt pyproject.toml
 
-      - name: Create PR for Actions updates
+      - name: Create Pull Request for Python deps
         uses: peter-evans/create-pull-request@v6
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          commit-message: "chore(actions): update GitHub Actions versions"
-          branch: deps/update-actions
-          title: "chore(actions): update GitHub Actions"
-          body: "Automated update of GitHub Actions versions."
-          labels: dependencies, actions
+          commit-message: "chore(deps): update Python packages"
+          branch: deps/weekly-update
+          title: "chore(deps): automated dependency update"
+          body: "Dependencies were updated automatically by pip-compile against pyproject.toml."
+          labels: dependencies, python
+          delete-branch: true

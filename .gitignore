@@ -9,6 +9,7 @@ rclone.conf
 *.key
 .env
 .env.*
+*.secret
 
 # Python Cache & Bytecode
 __pycache__/
@@ -16,9 +17,34 @@ __pycache__/
 *$py.class
 *.so
 .Python
+
+# Virtual Environments
 env/
 venv/
 .venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Packaging & Build Artifacts
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# Testing, Linting & Type Checking
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+.mypy_cache/
+.ruff_cache/
+
+# Static Analysis & Security Scans
+results.sarif
+*.sarif
+bandit.json
 
 # Logs & Runtime Dumps
 *.log
@@ -26,7 +52,7 @@ test_trace.log
 rclone_backup.log
 rclone_cmf_backup.log
 
-# Temporary and Archive Files
+# Temporary, Backup and Archive Files
 *.tmp
 *.bak
 *.swp
@@ -35,6 +61,10 @@ rclone_cmf_backup.log
 *.zip
 *.tar.gz
 *.7z
+
+# IDE & Editor Settings
+.vscode/
+.idea/
 
 # OS Metadata
 .DS_Store

@@ -1,0 +1,8 @@
+pytest>=8.0
+ruff>=0.3
+black>=24.2
+mypy>=1.8
+bandit>=1.7
+types-PyYAML>=6.0
+types-psutil>=5.9
+pip-tools>=7.3
