@@ -71,5 +71,5 @@ jobs:
       - uses: zizmorcore/zizmor-action@45d7276c9ca790aabd705e31ca99c6185c3e76dd
         with:
           inputs: .github/workflows
-          min-severity: error
+          min-severity: high
           advanced-security: false
