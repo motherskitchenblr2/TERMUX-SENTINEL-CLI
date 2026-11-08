@@ -47,8 +47,8 @@ jobs:
       - name: Normalize and de-duplicate SARIF
         if: always()
         run: |
-          if [ ! -f results.sarif ]; then
-            echo "No SARIF file generated, skipping normalization."
+          if [ ! -s results.sarif ]; then
+            echo "No SARIF file generated or file is empty, skipping normalization."
             exit 0
           fi
 
@@ -60,8 +60,16 @@ jobs:
           from pathlib import Path
 
           sarif_path = Path("results.sarif")
-          with sarif_path.open("r", encoding="utf-8") as fh:
-              data = json.load(fh)
+          try:
+              with sarif_path.open("r", encoding="utf-8") as fh:
+                  content = fh.read().strip()
+                  if not content:
+                      print("SARIF content is empty.")
+                      raise SystemExit(0)
+                  data = json.loads(content)
+          except Exception as exc:
+              print(f"Skipping normalization: {exc}")
+              raise SystemExit(0)
 
           runs = data.get("runs", [])
           if not runs:
