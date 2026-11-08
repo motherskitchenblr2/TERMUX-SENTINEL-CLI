@@ -479,7 +479,7 @@ def get_device_name():
 # ==============================================================================
 # NEON BORDER UI CONTAINERS & HEADERS
 # ==============================================================================
-def render_hud_box(view_name="DASHBOARD"):
+def render_hud_box(_view_name="DASHBOARD"):
     """All-Around Neon Border HUD Box (Mobile Clamped to 44 columns)."""
     cols = get_term_cols()
     used, _total, free, pct = get_disk_usage()
@@ -2257,7 +2257,7 @@ def cli_bots(action="scan", pid=None):
             print(f"{NEON_YELLOW}✗ Could not terminate PID {pid}: {e}{C_RESET}")
 
 
-def cli_cloud(live=False, start=False):
+def cli_cloud(_live=False, start=False):
     if start:
         animate_safe("STARTING", "Launching background Rclone cloud backup...", duration=0.8)
         trace_path = os.path.join(HOME_DIR, "test_trace.log")

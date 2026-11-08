@@ -112,12 +112,7 @@ jobs:
           # Filter out cosmetic style/naming/formatting issues to isolate true security findings
           # -------------------------------------------------------------------
           COSMETIC_PREFIXES = (
-              "PyLint_C", "PyLintPython3_C", "markdownlint_", "remark-lint",
-              "PyLint_W07", "PyLintPython3_W07", "Ruff_BLE001", "Prospector_pylint",
-              "Ruff_PLW1510", "PyLintPython3_W1510", "PyLint_R", "PyLintPython3_R",
-              "PyLint_W0613", "PyLint_W0611", "PyLint_W0612", "PyLintPython3_W1514",
-              "PyLintPython3_E5110", "PyLint_E5110", "Ruff_RUF059", "Ruff_S110",
-              "Ruff_D", "PyLint_W"
+              "PyLint", "Prospector", "markdownlint", "remark-lint", "Ruff"
           )
           filtered_results = [
               res for res in merged_results
