@@ -54,7 +54,7 @@ jobs:
           ref: ${{ github.head_ref }}
 
       - name: ShellCheck + shfmt
-        uses: luizm/action-sh-checker@master
+        uses: luizm/action-sh-checker@883217215b11c1fabbf00eb1a9a041f62d74c744 # master
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:

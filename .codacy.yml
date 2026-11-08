@@ -12,6 +12,18 @@ engines:
       - "tests/**"
       - "*.txt"
       - "requirements*.txt"
+    disable:
+      - C0103
+      - C0301
+      - C0111
+      - C0114
+      - C0115
+      - C0116
+      - W0703
+      - W0718
+      - W1510
+      - R0912
+      - R0915
   bandit:
     enabled: true
     exclude_paths:

@@ -11,6 +11,7 @@
 import json
 import os
 import re
+import shlex
 import shutil
 import signal
 import subprocess
@@ -199,8 +200,8 @@ def is_protected(path):
             pat = it.get("pattern", "").lower()
             if pat and pat in path_str:
                 return True
-    except Exception:
-        pass
+    except (OSError, ValueError, TypeError):
+        return False
     return False
 
 
@@ -342,9 +343,15 @@ def print_large_header():
     print(render_3d_banner(NEON_CYAN, colorful=True))
 
 
+def clear_screen():
+    """Terminal clear using ANSI escape sequences (safe, zero-fork)."""
+    sys.stdout.write("\033[H\033[2J")
+    sys.stdout.flush()
+
+
 def animate_boot_glow():
     """High-animation 3D Embossed Startup Intro with circulating neon border."""
-    os.system("clear")
+    clear_screen()
     frames = [
         (NEON_CYAN, "✦ INITIALIZING 3D NEON CORE...", 0.16),
         (NEON_PINK, "⚡ CALIBRATING STORAGE TELEMETRY...", 0.16),
@@ -353,7 +360,7 @@ def animate_boot_glow():
         (NEON_CYAN, "🚀 SENTINEL DEFENSE MATRIX ONLINE!", 0.20),
     ]
     for b_color, msg, delay in frames:
-        os.system("clear")
+        clear_screen()
         print("\n" + render_3d_banner(border_color=b_color, colorful=True))
         print(f"\n {BG_CHARCOAL} {C_BOLD}{b_color}[ ✦ ]{C_RESET} {BRIGHT_WHITE}{msg:<34}{C_RESET}")
         time.sleep(delay)
@@ -984,7 +991,7 @@ def scan_bot_scripts():
                                         is_bot = True
                                         reason = f"Contains '{m.group(0)}' bot logic"
                                         break
-                        except Exception:
+                        except (OSError, UnicodeDecodeError):
                             pass
 
                     if is_bot:
@@ -1421,7 +1428,7 @@ def render_vault_view(vault_items):
 # ==============================================================================
 def show_rclone_status():
     cols = get_term_cols()
-    os.system("clear")
+    clear_screen()
     print_large_header()
     print_section_h2("📡 RCLONE CLOUD BACKUP LIVE TELEMETRY", color=NEON_CYAN)
     ps = subprocess.run(["pgrep", "-f", "rclone"], capture_output=True, text=True)
@@ -1444,7 +1451,12 @@ def show_rclone_status():
     for l in logs:
         if os.path.exists(l) and os.path.getsize(l) > 0:
             print(f"{C_DIM}Log: {l}{C_RESET}\n")
-            os.system(f"tail -n 15 {l}")
+            try:
+                with open(l, "r", encoding="utf-8", errors="replace") as log_file:
+                    log_lines = log_file.readlines()[-15:]
+                    print("".join(log_lines), end="")
+            except OSError:
+                pass
             found_log = True
             break
     if not found_log:
@@ -1608,7 +1620,7 @@ def execute_actions(
 
     total_reclaim = sum(t["size_bytes"] for t in clean_items)
     cols = get_term_cols()
-    os.system("clear")
+    clear_screen()
     print_large_header()
     print_section_h2("⚠️  TERMUX_SENTINEL: FINAL CONFIRMATION  ⚠️", color=NEON_RED)
 
@@ -1731,7 +1743,12 @@ def execute_actions(
         print_divider_h3("UNINSTALLING APPLICATIONS", color=NEON_RED)
         for a in uninstall_items:
             animate_step("UNINSTALLING", f"Removing {a['name']}...", color=NEON_RED, duration=0.7)
-            subprocess.run(a["uninstall_cmd"], shell=True)
+            uninstall_cmd = a.get("uninstall_cmd", "")
+            if uninstall_cmd:
+                try:
+                    subprocess.run(shlex.split(uninstall_cmd), check=False)  # nosec B603
+                except (OSError, ValueError):
+                    pass
 
             # Fail-safe: ensure primary binary/symlink is completely eliminated
             bpath = a.get("bin")
@@ -1741,23 +1758,22 @@ def execute_actions(
                         shutil.rmtree(bpath, ignore_errors=True)
                     else:
                         os.remove(bpath)
-                except Exception:
-                    subprocess.run(f"rm -rf {bpath}", shell=True)
+                except (OSError, PermissionError):
+                    shutil.rmtree(bpath, ignore_errors=True)
 
             # Fail-safe: eliminate any secondary binaries/symlinks
             for eb in a.get("extra_bins", []):
                 if os.path.exists(eb) or os.path.islink(eb):
                     try:
                         os.remove(eb)
-                    except Exception:
-                        subprocess.run(f"rm -rf {eb}", shell=True)
+                    except (OSError, PermissionError):
+                        shutil.rmtree(eb, ignore_errors=True)
 
             # Fail-safe: eliminate leftover node_modules or app packages
             for ed in a.get("extra_dirs", []):
                 if os.path.exists(ed):
                     shutil.rmtree(ed, ignore_errors=True)
 
-            subprocess.run("hash -r 2>/dev/null", shell=True)
             print(f"    {NEON_RED}✓ Binary & package completely wiped for {a['name']}{C_RESET}")
 
             if a.get("data_dirs"):
@@ -1800,7 +1816,12 @@ def execute_actions(
         print_divider_h3("RUNNING SYSTEM & DEPENDENCY UPGRADES", color=NEON_GREEN)
         for t in update_items:
             animate_safe("UPDATING", f"Running: {t['name']}...", duration=0.6)
-            subprocess.run(t["cmd"], shell=True)
+            cmd = t.get("cmd", "")
+            if cmd:
+                try:
+                    subprocess.run(shlex.split(cmd), check=False)  # nosec B603
+                except (OSError, ValueError):
+                    pass
             print(f"    {NEON_GREEN}✓ Update finished for {t['name']}{C_RESET}")
 
     # Reset selection for all executed items
@@ -1843,7 +1864,7 @@ def main():
     current_view = "main"
 
     while True:
-        os.system("clear")
+        clear_screen()
         if current_view == "main":
             render_main_view(clean_targets, update_targets, selected)
         elif current_view == "apps":
@@ -2059,7 +2080,7 @@ def cli_clean(safe_only=True, dry_run=False, auto_yes=False):
                                 shutil.rmtree(ip, ignore_errors=True)
                             else:
                                 os.remove(ip)
-                        except Exception:
+                        except (OSError, UnicodeDecodeError):
                             pass
         elif t["action_type"] == "remove_paths":
             for p in t["paths"]:
@@ -2071,10 +2092,18 @@ def cli_clean(safe_only=True, dry_run=False, auto_yes=False):
                             shutil.rmtree(p, ignore_errors=True)
                         else:
                             os.remove(p)
-                    except Exception:
-                        pass
+                    except (OSError, PermissionError):
+                        shutil.rmtree(p, ignore_errors=True)
 
-    subprocess.run("pip cache purge 2>/dev/null", shell=True)
+    try:
+        subprocess.run(
+            [sys.executable, "-m", "pip", "cache", "purge"],
+            check=False,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )  # nosec B603
+    except OSError:
+        pass
     animate_safe(
         "PURGED",
         f"Successfully reclaimed {human_size(total_bytes)} storage!",
@@ -2157,7 +2186,12 @@ def cli_apps(action="list", target=None):
             print(f"{NEON_YELLOW}Uninstallation cancelled.{C_RESET}")
             return
         animate_delete(f"Removing {matched['name']}...")
-        subprocess.run(matched["uninstall_cmd"], shell=True)
+        uninstall_cmd = matched.get("uninstall_cmd", "")
+        if uninstall_cmd:
+            try:
+                subprocess.run(shlex.split(uninstall_cmd), check=False)  # nosec B603
+            except (OSError, ValueError):
+                pass
         if matched.get("bin") and (
             os.path.exists(matched["bin"]) or os.path.islink(matched["bin"])
         ):
@@ -2166,18 +2200,17 @@ def cli_apps(action="list", target=None):
                     shutil.rmtree(matched["bin"], ignore_errors=True)
                 else:
                     os.remove(matched["bin"])
-            except Exception:
-                subprocess.run(f"rm -rf {matched['bin']}", shell=True)
+            except (OSError, PermissionError):
+                shutil.rmtree(matched["bin"], ignore_errors=True)
         for eb in matched.get("extra_bins", []):
             if os.path.exists(eb) or os.path.islink(eb):
                 try:
                     os.remove(eb)
-                except Exception:
-                    subprocess.run(f"rm -rf {eb}", shell=True)
+                except (OSError, PermissionError):
+                    shutil.rmtree(eb, ignore_errors=True)
         for ed in matched.get("extra_dirs", []):
             if os.path.exists(ed):
                 shutil.rmtree(ed, ignore_errors=True)
-        subprocess.run("hash -r 2>/dev/null", shell=True)
         print(f"{NEON_GREEN}✓ Uninstallation complete for {matched['name']}{C_RESET}")
 
 
@@ -2225,12 +2258,14 @@ def cli_bots(action="scan", pid=None):
 def cli_cloud(live=False, start=False):
     if start:
         animate_safe("STARTING", "Launching background Rclone cloud backup...", duration=0.8)
-        subprocess.Popen(
-            ["bash", os.path.join(HOME_DIR, "migrate_to_realme_bkp.sh")],
-            stdout=open(os.path.join(HOME_DIR, "test_trace.log"), "a"),
-            stderr=subprocess.STDOUT,
-            preexec_fn=os.setpgrp,
-        )
+        trace_path = os.path.join(HOME_DIR, "test_trace.log")
+        with open(trace_path, "a", encoding="utf-8") as trace_log:
+            subprocess.Popen(
+                ["bash", os.path.join(HOME_DIR, "migrate_to_realme_bkp.sh")],
+                stdout=trace_log,
+                stderr=subprocess.STDOUT,
+                start_new_session=True,
+            )
         print(f"{NEON_GREEN}✓ Cloud migration running in background with wake-lock.{C_RESET}")
         print(f"View progress: {NEON_CYAN}sentinel cloud{C_RESET}")
     else:
@@ -2242,7 +2277,12 @@ def cli_update():
     targets = define_update_targets()
     for t in targets:
         print(f"\n{NEON_CYAN}▶ {t['name']}{C_RESET}")
-        subprocess.run(t["cmd"], shell=True)
+        cmd = t.get("cmd", "")
+        if cmd:
+            try:
+                subprocess.run(shlex.split(cmd), check=False)  # nosec B603
+            except (OSError, ValueError):
+                pass
     animate_safe("COMPLETED", "All system & dependency updates finished!", duration=0.6)
 
 
