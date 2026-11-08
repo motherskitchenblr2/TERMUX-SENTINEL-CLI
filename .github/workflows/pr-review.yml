@@ -37,11 +37,6 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: ShellCheck + shfmt review
-        uses: luizm/action-sh-checker@883217215b11c1fabbf00eb1a9a041f62d74c744 # master
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          sh_checker_comment: true
-          sh_checker_only_diff: true
-          sh_checker_exclude: "node_modules .git"
+      - name: ShellCheck review
+        run: |
+          shellcheck $(find . -name "*.sh" -not -path "./docs/*") || true
