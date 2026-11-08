@@ -1452,7 +1452,7 @@ def show_rclone_status():
         if os.path.exists(l) and os.path.getsize(l) > 0:
             print(f"{C_DIM}Log: {l}{C_RESET}\n")
             try:
-                with open(l, "r", encoding="utf-8", errors="replace") as log_file:
+                with open(l, encoding="utf-8", errors="replace") as log_file:
                     log_lines = log_file.readlines()[-15:]
                     print("".join(log_lines), end="")
             except OSError:
