@@ -29,6 +29,7 @@ jobs:
       - uses: actions/setup-python@v7
         with:
           python-version: '3.10'
+          check-latest: false
       - name: Run Bandit Security Analysis
         run: |
           pip install "bandit[sarif]"
@@ -37,7 +38,7 @@ jobs:
             echo '{"$schema":"https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema-2.1.0.json","version":"2.1.0","runs":[]}' > bandit.sarif
           fi
       - uses: github/codeql-action/upload-sarif@v4
-        if: always()
+        if: always() && hashFiles('bandit.sarif') != ''
         with:
           sarif_file: bandit.sarif
 
