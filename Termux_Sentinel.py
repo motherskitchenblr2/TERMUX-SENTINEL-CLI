@@ -14,7 +14,7 @@ import re
 import shlex
 import shutil
 import signal
-import subprocess
+import subprocess  # nosec B404
 import sys
 import time
 import unicodedata
@@ -137,9 +137,9 @@ def save_vault(items):
     """Saves vault items safely to disk."""
     try:
         os.makedirs(VAULT_DIR, exist_ok=True)
-        with open(VAULT_FILE, "w") as f:
+        with open(VAULT_FILE, "w", encoding="utf-8") as f:
             json.dump(items, f, indent=2)
-    except Exception:
+    except (OSError, ValueError):
         pass
 
 
@@ -419,10 +419,10 @@ def get_dir_size(path):
     if not os.path.exists(path):
         return 0
     try:
-        du_path = shutil.which("du") or "du"
-        out = subprocess.check_output(
+        du_path = shutil.which("du") or "/usr/bin/du"
+        out = subprocess.check_output(  # nosec B603
             [du_path, "-sk", path], stderr=subprocess.DEVNULL, timeout=1.8
-        )  # nosec B603, B607
+        )
         return int(out.split()[0]) * 1024
     except Exception:
         try:
@@ -450,16 +450,17 @@ def get_disk_usage():
 def get_device_name():
     """Detects current mobile device brand & model dynamically."""
     try:
+        getprop_bin = shutil.which("getprop") or "/system/bin/getprop"
         brand = (
-            subprocess.check_output(
-                ["getprop", "ro.product.brand"], text=True, stderr=subprocess.DEVNULL
+            subprocess.check_output(  # nosec B603
+                [getprop_bin, "ro.product.brand"], text=True, stderr=subprocess.DEVNULL
             )
             .strip()
             .upper()
         )
         model = (
-            subprocess.check_output(
-                ["getprop", "ro.product.model"], text=True, stderr=subprocess.DEVNULL
+            subprocess.check_output(  # nosec B603
+                [getprop_bin, "ro.product.model"], text=True, stderr=subprocess.DEVNULL
             )
             .strip()
             .upper()
@@ -470,7 +471,7 @@ def get_device_name():
             return "CMF PHONE 1 (NOTHING)"
         if brand:
             return f"{brand} {model}"[:20]
-    except Exception:
+    except (OSError, subprocess.SubprocessError):
         pass
     return "TERMUX SENTINEL"
 
@@ -481,7 +482,7 @@ def get_device_name():
 def render_hud_box(view_name="DASHBOARD"):
     """All-Around Neon Border HUD Box (Mobile Clamped to 44 columns)."""
     cols = get_term_cols()
-    used, total, free, pct = get_disk_usage()
+    used, _total, free, pct = get_disk_usage()
     vault_items = load_vault()
     vault_count = len(vault_items)
     dev_name = get_device_name()
@@ -953,7 +954,7 @@ def scan_bot_scripts():
                                 f.read().decode("utf-8", errors="ignore").replace("\x00", " "),
                             )
                         )
-            except Exception:
+            except (OSError, ValueError):
                 pass
 
     idx = 50
@@ -1032,7 +1033,7 @@ def scan_bot_scripts():
                             }
                         )
                         idx += 1
-        except Exception:
+        except (OSError, PermissionError):
             pass
     return detected_bots
 
@@ -1122,7 +1123,7 @@ def scan_running_daemons():
                         }
                     )
                     idx += 1
-        except Exception:
+        except (OSError, PermissionError):
             pass
     return daemons
 
@@ -1431,7 +1432,8 @@ def show_rclone_status():
     clear_screen()
     print_large_header()
     print_section_h2("📡 RCLONE CLOUD BACKUP LIVE TELEMETRY", color=NEON_CYAN)
-    ps = subprocess.run(["pgrep", "-f", "rclone"], capture_output=True, text=True)
+    pgrep_bin = shutil.which("pgrep") or "pgrep"
+    ps = subprocess.run([pgrep_bin, "-f", "rclone"], capture_output=True, text=True)  # nosec B603
     if ps.returncode == 0:
         print(
             f"  {BADGE_GREEN} ACTIVE & UPLOADING {C_RESET} {BRIGHT_WHITE}Streaming backup to Google Drive...{C_RESET}"
@@ -1527,7 +1529,7 @@ def execute_preserve(current_view, selected, clean_targets, apps_targets, bot_sc
     )
     added_count = 0
     for it in items_to_preserve:
-        ok, res = add_to_vault(it["name"], it["pattern"], it["type"])
+        ok, _res = add_to_vault(it["name"], it["pattern"], it["type"])
         if ok:
             added_count += 1
             print(f"    {NEON_GREEN}✓ Shielded:{C_RESET} {BRIGHT_WHITE}{it['name']}{C_RESET}")
@@ -1678,7 +1680,7 @@ def execute_actions(
                 os.kill(pid, signal.SIGTERM)
                 time.sleep(0.3)
                 os.kill(pid, signal.SIGKILL)
-            except Exception:
+            except (OSError, ValueError):
                 pass
             print(f"    {NEON_RED}✓ Terminated PID {pid}{C_RESET}")
 
@@ -1704,7 +1706,7 @@ def execute_actions(
         for t in clean_items:
             animate_delete(f"Cleaning: {t['name']}...")
             if t["action_type"] == "command":
-                subprocess.run(t["cmd"])
+                subprocess.run(t["cmd"], check=False)  # nosec B603
             elif t["action_type"] == "empty_dir":
                 for p in t["paths"]:
                     if is_protected(p):
@@ -1720,7 +1722,7 @@ def execute_actions(
                                     shutil.rmtree(ipath, ignore_errors=True)
                                 else:
                                     os.remove(ipath)
-                            except Exception:
+                            except OSError:
                                 pass
                         print(f"    {NEON_RED}✓ Emptied: {p}{C_RESET}")
             elif t["action_type"] == "remove_paths":
@@ -1830,7 +1832,7 @@ def execute_actions(
 
     print("\n" + "─" * cols)
     animate_safe("COMPLETED", "All operations executed with 100% integrity!", duration=0.8)
-    used, total, free, pct = get_disk_usage()
+    used, _total, free, pct = get_disk_usage()
     print(
         f"\n {BG_CHARCOAL} {C_BOLD}{BRIGHT_WHITE}UPDATED STORAGE:{C_RESET} Used: {NEON_YELLOW}{used}{C_RESET} | Free: {NEON_GREEN}{C_BOLD}{free}{C_RESET} ({NEON_PINK}{pct} full{C_RESET})"
     )
@@ -2056,7 +2058,7 @@ def cli_clean(safe_only=True, dry_run=False, auto_yes=False):
         )
         try:
             conf = input().strip().lower()
-        except Exception:
+        except (EOFError, KeyboardInterrupt):
             conf = "n"
         if conf not in ("y", "yes"):
             print(f"{NEON_YELLOW}Operation cancelled by operator.{C_RESET}")
@@ -2065,7 +2067,7 @@ def cli_clean(safe_only=True, dry_run=False, auto_yes=False):
     for t in targets:
         animate_delete(f"Cleaning {t['name'][:24]}...")
         if t["action_type"] == "command":
-            subprocess.run(t["cmd"])
+            subprocess.run(t["cmd"], check=False)  # nosec B603
         elif t["action_type"] == "empty_dir":
             for p in t["paths"]:
                 if is_protected(p):
@@ -2109,7 +2111,7 @@ def cli_clean(safe_only=True, dry_run=False, auto_yes=False):
         f"Successfully reclaimed {human_size(total_bytes)} storage!",
         duration=0.6,
     )
-    used, total, free, pct = get_disk_usage()
+    _used, _total, free, pct = get_disk_usage()
     print(
         f"\n {BG_CHARCOAL} {C_BOLD}{BRIGHT_WHITE}UPDATED STORAGE:{C_RESET} Free: {NEON_GREEN}{C_BOLD}{free}{C_RESET} ({NEON_PINK}{pct} full{C_RESET})"
     )
@@ -2260,8 +2262,9 @@ def cli_cloud(live=False, start=False):
         animate_safe("STARTING", "Launching background Rclone cloud backup...", duration=0.8)
         trace_path = os.path.join(HOME_DIR, "test_trace.log")
         with open(trace_path, "a", encoding="utf-8") as trace_log:
-            subprocess.Popen(
-                ["bash", os.path.join(HOME_DIR, "migrate_to_realme_bkp.sh")],
+            bash_bin = shutil.which("bash") or "/bin/bash"
+            subprocess.Popen(  # nosec B603
+                [bash_bin, os.path.join(HOME_DIR, "migrate_to_realme_bkp.sh")],
                 stdout=trace_log,
                 stderr=subprocess.STDOUT,
                 start_new_session=True,
