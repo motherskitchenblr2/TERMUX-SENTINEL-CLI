@@ -16,8 +16,8 @@ and this project adheres to
 - Interactive TUI and command-line interface (`sentinel ui`, `sentinel audit`,
   `sentinel clean`, `sentinel vault`, `sentinel apps`, `sentinel bots`,
   `sentinel cloud`).
-- Safety Vault subsystem (`vault.json`) protecting WhatsApp media, root
-  storage, and user development garages.
+- Safety Vault subsystem (`vault.json`) protecting critical documents,
+  developer workspaces, and cloud backups.
 - Dual-direction cloud migration and live backup workflows via Rclone
   (`Backup_to_Drive.sh`, `migrate_to_cmf_bkp.sh`, `migrate_to_realme_bkp.sh`).
 - Project packaging configuration (`pyproject.toml`, `requirements.txt`,

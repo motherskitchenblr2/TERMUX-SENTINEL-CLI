@@ -1,16 +1,14 @@
 #!/data/data/com.termux/files/usr/bin/bash
 # =============================================================================
-# CMF PHONE 1 (Nothing Mobiles) -> Google Drive Cloud Migration
-# Device: CMF Phone 1 by Nothing (128 GB ROM / 8 GB RAM)
-# Target Remote: pasha_gdrive:CMF_BKP
-# Target Goal: 50+ GB Storage Reclamation & Real-Time Sync
-# Google Account: Pasha0118@gmail.com
+# Android Device -> Google Drive Cloud Migration
+# Target Remote: remote_gdrive:Cloud_Backup
+# Target Goal: High-Efficiency Parallel Streaming (Links Preserved)
 # =============================================================================
 
 set -e
 
-BASE_REMOTE="pasha_gdrive:CMF_BKP"
-LOG_FILE="$HOME/rclone_cmf_backup.log"
+BASE_REMOTE="remote_gdrive:Cloud_Backup"
+LOG_FILE="$HOME/rclone_backup.log"
 SHARED_STORAGE="/storage/emulated/0"
 TERMUX_HOME="$HOME"
 UBUNTU_ROOT="/data/data/com.termux/files/usr/var/lib/proot-distro/containers/ubuntu/rootfs/root"
@@ -22,8 +20,7 @@ if command -v termux-wake-lock >/dev/null 2>&1; then
 fi
 
 echo "=========================================================="
-echo " 📱 CMF PHONE 1 -> GOOGLE DRIVE CLOUD MIGRATION"
-echo " Account: Pasha0118@gmail.com"
+echo " 📱 ANDROID TERMINAL -> GOOGLE DRIVE CLOUD MIGRATION"
 echo " Target Remote: $BASE_REMOTE"
 echo " Mode: High-Efficiency Parallel Streaming (Links Preserved)"
 echo " Log File: $LOG_FILE"
@@ -40,22 +37,22 @@ RCLONE_FLAGS=(
 	-P
 )
 
-# 1. WHATSAPP & TELEGRAM (Targeted Protected Mirror)
+# 1. IMPORTANT DOCUMENTS & PROTECTED MEDIA (Targeted Mirror)
 echo ""
-echo "[1/4] Syncing WhatsApp & Telegram Media..."
-if [ -d "$SHARED_STORAGE/Android/media/com.whatsapp" ]; then
-	echo "  -> Mirroring WhatsApp Media to $BASE_REMOTE/WhatsApp/Media..."
-	rclone copy "$SHARED_STORAGE/Android/media/com.whatsapp" "$BASE_REMOTE/WhatsApp/Media" "${RCLONE_FLAGS[@]}"
+echo "[1/4] Syncing Important Documents & Media..."
+if [ -d "$SHARED_STORAGE/Important_Documents" ]; then
+	echo "  -> Mirroring Important Documents to $BASE_REMOTE/Important_Documents..."
+	rclone copy "$SHARED_STORAGE/Important_Documents" "$BASE_REMOTE/Important_Documents" "${RCLONE_FLAGS[@]}"
 fi
 
-if [ -d "$SHARED_STORAGE/Telegram" ]; then
-	echo "  -> Mirroring Telegram Media to $BASE_REMOTE/Telegram..."
-	rclone copy "$SHARED_STORAGE/Telegram" "$BASE_REMOTE/Telegram" "${RCLONE_FLAGS[@]}"
+if [ -d "$SHARED_STORAGE/Documents" ]; then
+	echo "  -> Mirroring Documents to $BASE_REMOTE/Documents..."
+	rclone copy "$SHARED_STORAGE/Documents" "$BASE_REMOTE/Documents" "${RCLONE_FLAGS[@]}"
 fi
 
-# 2. HEAVY MULTIMEDIA & DOWNLOADS (Reclaiming the 50 GB)
+# 2. MULTIMEDIA & DOWNLOADS
 echo ""
-echo "[2/4] Syncing Phone Multimedia (DCIM, Movies, Downloads, Pictures)..."
+echo "[2/4] Syncing Media & Downloads (DCIM, Movies, Downloads, Pictures)..."
 for FOLDER in DCIM Download Movies Pictures Documents Music Videos; do
 	if [ -d "$SHARED_STORAGE/$FOLDER" ]; then
 		echo "  -> Processing $FOLDER..."
@@ -91,5 +88,5 @@ echo ""
 echo "=========================================================="
 echo " ✓ Cloud Sync to $BASE_REMOTE completed successfully!"
 echo " Log file: $LOG_FILE"
-echo " Run 'python3 ~/Termux_Sentinel.py' to audit and purge caches."
+echo " Run 'sentinel' to audit and purge caches."
 echo "=========================================================="

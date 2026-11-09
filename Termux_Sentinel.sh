@@ -1,7 +1,7 @@
 #!/data/data/com.termux/files/usr/bin/bash
 # =============================================================================
 # Termux:Widget Shortcut - Termux_Sentinel
-# Device: Realme 12 Pro+
+# Environment: Android Termux
 # =============================================================================
 
 if command -v termux-wake-lock >/dev/null 2>&1; then

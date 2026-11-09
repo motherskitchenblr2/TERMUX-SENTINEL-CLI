@@ -56,50 +56,50 @@ VAULT_FILE = os.path.join(VAULT_DIR, "vault.json")
 
 # Core hardcoded safety keywords that can NEVER be touched or bypassed
 CORE_SAFETY_KEYWORDS = [
-    "com.whatsapp",
-    "whatsapp",
-    "advanced-code-garage",
-    "realme_bkp",
-    "cmf_bkp",
+    "important_documents",
+    "documents",
+    "protected_workspace",
+    "cloud_backup",
+    "remote_backup",
 ]
 
 DEFAULT_VAULT_ITEMS = [
     {
         "id": 1,
-        "name": "WhatsApp Media & Backups",
-        "pattern": "com.whatsapp",
+        "name": "Important Documents & Media",
+        "pattern": "Important_Documents",
         "type": "System Scope",
         "locked": True,
         "date_added": "Default Core Shield",
     },
     {
         "id": 2,
-        "name": "WhatsApp Storage & DB",
-        "pattern": "whatsapp",
+        "name": "Personal Documents & Data",
+        "pattern": "documents",
         "type": "Storage Scope",
         "locked": True,
         "date_added": "Default Core Shield",
     },
     {
         "id": 3,
-        "name": "Advanced-Code-Garage Workspace",
-        "pattern": "Advanced-Code-Garage",
+        "name": "Protected Workspace",
+        "pattern": "Protected_Workspace",
         "type": "Active Workspace",
         "locked": True,
         "date_added": "Default Core Shield",
     },
     {
         "id": 4,
-        "name": "Cloud Backup Targets",
-        "pattern": "Realme_BKP",
+        "name": "Primary Cloud Backup Target",
+        "pattern": "Cloud_Backup",
         "type": "Cloud Target",
         "locked": True,
         "date_added": "Default Core Shield",
     },
     {
         "id": 5,
-        "name": "CMF Cloud Target",
-        "pattern": "CMF_BKP",
+        "name": "Secondary Cloud Target",
+        "pattern": "Remote_Backup",
         "type": "Cloud Target",
         "locked": True,
         "date_added": "Default Core Shield",
@@ -179,7 +179,7 @@ def remove_from_vault(item_id):
     if target.get("locked"):
         return (
             False,
-            "Core system shields (WhatsApp & Code Garage) are permanently locked for safety!",
+            "Core system shields (Important Documents & Workspaces) are permanently locked for safety!",
         )
     items = [it for it in items if it.get("id") != item_id]
     save_vault(items)

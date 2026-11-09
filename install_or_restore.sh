@@ -1,7 +1,7 @@
 #!/data/data/com.termux/files/usr/bin/bash
 # =============================================================================
 # Automated One-Tap Installer & Restorer for Termux Sentinel & Rclone
-# Compatible with Realme 12 Pro+, CMF Phone 1, and all Android Termux devices
+# Compatible with Android Termux and PRoot Linux environments
 # =============================================================================
 
 set -e

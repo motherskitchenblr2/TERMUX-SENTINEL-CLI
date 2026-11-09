@@ -34,7 +34,7 @@ Specifically calibrated for mobile portrait displays ($\le 44$ columns with **Sh
 - 🎨 **Multi-Color Neon Spectrum:** Vibrant 6-color cyber aesthetic (Cyan, Pink, Yellow, Orange, Green, Purple) over Dark Charcoal background.
 - 🧹 **Deep Cache Doctor:** Reclaims gigabytes from build caches, temporary directories, package managers, and runtimes:
   - `tmp` / `cache` / `pip` / `uv` / `npm` / `pnpm` / `bun` / `playwright` / container build artifacts.
-- 🛡️ **Immutable Preservation Vault (`vault.json`):** Dedicated shield registry that permanently excludes critical folders (e.g., WhatsApp databases, Code Garage, cloud backups) from scans and purges.
+- 🛡️ **Immutable Preservation Vault (`vault.json`):** Dedicated shield registry that permanently excludes critical folders (e.g., Important Documents, developer workspaces, cloud backups) from scans and purges.
 - 🕵️ **Smart Bot Detective & Daemon Sentry:** Scans Python, JavaScript, and Shell scripts; identifies automated bot scripts (`telegram`, `discord`, `bot.py`, `ai_worker`); surfaces silent background processes with instant PID termination.
 - 📦 **Installed Apps & Debris Purge:** Scans and safely removes installed AI CLI tools (Codex, Qwen, Droid, Claude, Ollama, etc.), ensuring orphaned binaries, scoped packages, and command hashes are completely wiped.
 - ☁️ **Cloud Synchronization & Migration:** Native Rclone background daemon with live telemetry streaming directly to Google Drive.
@@ -128,11 +128,11 @@ When running `sentinel` without arguments, navigate using single keystrokes:
 The Preservation Vault (`vault.json`) guarantees that critical personal data, active code repositories, and cloud backups are **completely invisible** to scanners and **immune** to deletion.
 
 ### Default Core Shields
-- **WhatsApp Media & Backups:** `com.whatsapp`
-- **WhatsApp Storage & DB:** `whatsapp`
-- **Active Code Workspaces:** `Advanced-Code-Garage`
-- **Cloud Migration Target (Realme):** `Realme_BKP`
-- **Cloud Migration Target (CMF):** `CMF_BKP`
+- **Important Documents & Media:** `Important_Documents`
+- **Personal Documents & Data:** `documents`
+- **Active Code Workspaces:** `Protected_Workspace`
+- **Primary Cloud Backup Target:** `Cloud_Backup`
+- **Secondary Cloud Backup Target:** `Remote_Backup`
 
 Users can add custom directory paths or wildcard patterns at any time via `sentinel vault add <pattern>` or by pressing `[p]` in the TUI.
 
@@ -144,7 +144,7 @@ Termux-Sentinel includes optimized parallel migration scripts to offload tens of
 
 ### Configuration
 1. Install rclone: `pkg install rclone`
-2. Configure Google Drive remote: `rclone config` (name it `pasha_gdrive` or customize in scripts).
+2. Configure Google Drive remote: `rclone config` (name it `remote_gdrive` or customize in scripts).
 3. Secure credentials: `chmod 600 ~/.config/rclone/rclone.conf`.
 4. Trigger migration: `sentinel cloud -s` or `bash ~/migrate_to_realme_bkp.sh`.
 
@@ -152,10 +152,9 @@ Termux-Sentinel includes optimized parallel migration scripts to offload tens of
 
 ## 📱 Multi-Device Support
 
-Termux-Sentinel is designed to run seamlessly across multiple devices:
-- **Primary Workstation:** Realme 12 Pro+ (256 GB ROM / 12 GB RAM)
-- **Secondary Node:** CMF Phone 1 by Nothing (128 GB ROM / 8 GB RAM)
-- Refer to [`CMF_PHONE_1_ANTIGRAVITY_INSTRUCTIONS.md`](CMF_PHONE_1_ANTIGRAVITY_INSTRUCTIONS.md) for step-by-step setup with Antigravity CLI and Gemini models.
+Termux-Sentinel is designed to run seamlessly across Android mobile workstations and terminal environments:
+- **Primary Workstation:** Android Termux Environment (ARM64 / AArch64)
+- **Secondary Node:** Ubuntu PRoot-Distro Container
 
 ---
 
@@ -168,14 +167,12 @@ TERMUX-SENTINEL/
 ├── vault.json                          # Default Preservation Vault configuration
 ├── Termux_Sentinel.sh                  # Termux Widget one-tap launcher
 ├── 3_Termux_Sentinel.sh                # Numbered widget shortcut with wake-lock
-├── Backup_to_Drive.sh                  # Dedicated WhatsApp & storage backup script
-├── migrate_to_realme_bkp.sh            # High-efficiency Realme cloud migration script
-├── migrate_to_cmf_bkp.sh               # CMF Phone 1 cloud migration script
+├── Backup_to_Drive.sh                  # Dedicated documents & storage backup script
+├── migrate_to_realme_bkp.sh            # High-efficiency cloud migration script
+├── migrate_to_cmf_bkp.sh               # Device cloud migration script
 ├── rclone.conf.template                # Sanitized Google Drive rclone template
-├── CMF_PHONE_1_ANTIGRAVITY_INSTRUCTIONS.md  # Multi-device Antigravity CLI guide
 ├── LICENSE                             # Apache 2.0 License
-├── README.md                           # Master Documentation & Manual
-└── Python Script/                      # Mirrored workspace package
+└── README.md                           # Master Documentation & Manual
 ```
 
 ---

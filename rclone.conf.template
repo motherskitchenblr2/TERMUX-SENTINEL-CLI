@@ -4,7 +4,7 @@
 # How to configure:
 # 1. Install rclone: pkg install rclone
 # 2. Run: rclone config
-#    - Name: pasha_gdrive (or update REMOTE name in scripts)
+#    - Name: remote_gdrive (or update REMOTE name in scripts)
 #    - Type: drive
 #    - Scope: 1 (Full access)
 # 3. Alternatively, copy this file to ~/.config/rclone/rclone.conf
@@ -12,7 +12,7 @@
 # 4. Secure the file: chmod 600 ~/.config/rclone/rclone.conf
 # =============================================================================
 
-[pasha_gdrive]
+[remote_gdrive]
 type = drive
 client_id = YOUR_GOOGLE_CLIENT_ID.apps.googleusercontent.com
 client_secret = YOUR_GOOGLE_CLIENT_SECRET

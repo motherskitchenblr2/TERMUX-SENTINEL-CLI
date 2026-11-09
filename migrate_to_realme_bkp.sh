@@ -1,12 +1,12 @@
 #!/data/data/com.termux/files/usr/bin/bash
 # =============================================================================
 # Complete & Safe Backup to Google Drive (rclone)
-# Device: Realme 12 Pro+ | Android Termux + Ubuntu proot-distro
+# Device: Android Termux + Ubuntu proot-distro
 # =============================================================================
 
 set -e
 
-BASE_REMOTE="pasha_gdrive:Realme_BKP"
+BASE_REMOTE="remote_gdrive:Cloud_Backup"
 LOG_FILE="$HOME/rclone_backup.log"
 UBUNTU_ROOT="/data/data/com.termux/files/usr/var/lib/proot-distro/containers/ubuntu/rootfs/root"
 TERMUX_HOME="$HOME"

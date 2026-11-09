@@ -52,7 +52,7 @@ def test_string_formatting_helpers():
 def test_vault_protection_logic():
     """Verify that is_protected identifies protected patterns."""
     assert callable(Termux_Sentinel.is_protected)
-    # A path containing whatsapp should match the default vault rule
-    assert Termux_Sentinel.is_protected("/storage/emulated/0/WhatsApp/Media") is True
+    # A path containing Important_Documents should match the default vault rule
+    assert Termux_Sentinel.is_protected("/storage/emulated/0/Important_Documents/Notes") is True
     # An ephemeral cache path should NOT be protected
     assert Termux_Sentinel.is_protected("/data/data/com.termux/files/home/.cache/tmp_junk") is False

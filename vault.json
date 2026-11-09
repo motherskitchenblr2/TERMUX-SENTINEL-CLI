@@ -1,40 +1,40 @@
 [
   {
     "id": 1,
-    "name": "WhatsApp Media & Backups",
-    "pattern": "com.whatsapp",
+    "name": "Important Documents & Media",
+    "pattern": "Important_Documents",
     "type": "System Scope",
     "locked": true,
     "date_added": "Default Core Shield"
   },
   {
     "id": 2,
-    "name": "WhatsApp Storage & DB",
-    "pattern": "whatsapp",
+    "name": "Personal Documents & Data",
+    "pattern": "documents",
     "type": "Storage Scope",
     "locked": true,
     "date_added": "Default Core Shield"
   },
   {
     "id": 3,
-    "name": "Advanced-Code-Garage Workspace",
-    "pattern": "Advanced-Code-Garage",
+    "name": "Protected Workspace",
+    "pattern": "Protected_Workspace",
     "type": "Active Workspace",
     "locked": true,
     "date_added": "Default Core Shield"
   },
   {
     "id": 4,
-    "name": "Realme_BKP Cloud Target",
-    "pattern": "Realme_BKP",
+    "name": "Primary Cloud Backup Target",
+    "pattern": "Cloud_Backup",
     "type": "Cloud Target",
     "locked": true,
     "date_added": "Default Core Shield"
   },
   {
     "id": 5,
-    "name": "CMF_BKP Cloud Target",
-    "pattern": "CMF_BKP",
+    "name": "Secondary Cloud Target",
+    "pattern": "Remote_Backup",
     "type": "Cloud Target",
     "locked": true,
     "date_added": "Default Core Shield"
