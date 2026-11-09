@@ -60,17 +60,24 @@ if [ -n "$SRC_VAULT" ]; then
 fi
 
 # 4. Restore Termux Widget Shortcuts
+SRC_W0="$(find_src "Termux-Sentinel")"
+if [ -n "$SRC_W0" ]; then
+	cp -vf "$SRC_W0" "$HOME_DIR/.shortcuts/Termux-Sentinel"
+	chmod 755 "$HOME_DIR/.shortcuts/Termux-Sentinel"
+	echo " ✓ Installed Termux Widget: ~/.shortcuts/Termux-Sentinel"
+fi
+
 SRC_W1="$(find_src "3_Termux_Sentinel.sh")"
 if [ -n "$SRC_W1" ]; then
 	cp -vf "$SRC_W1" "$HOME_DIR/.shortcuts/3_Termux_Sentinel.sh"
-	chmod +x "$HOME_DIR/.shortcuts/3_Termux_Sentinel.sh"
+	chmod 755 "$HOME_DIR/.shortcuts/3_Termux_Sentinel.sh"
 	echo " ✓ Installed Termux Widget: ~/.shortcuts/3_Termux_Sentinel.sh"
 fi
 
 SRC_W2="$(find_src "Termux_Sentinel.sh")"
 if [ -n "$SRC_W2" ]; then
 	cp -vf "$SRC_W2" "$HOME_DIR/.shortcuts/Termux_Sentinel.sh"
-	chmod +x "$HOME_DIR/.shortcuts/Termux_Sentinel.sh"
+	chmod 755 "$HOME_DIR/.shortcuts/Termux_Sentinel.sh"
 	echo " ✓ Installed Termux Widget: ~/.shortcuts/Termux_Sentinel.sh"
 fi
 

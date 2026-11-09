@@ -1,0 +1,8 @@
+#!/data/data/com.termux/files/usr/bin/bash
+# Termux:Widget shortcut - Termux Sentinel Cyber TUI
+cd ~
+if command -v termux-wake-lock >/dev/null 2>&1; then
+	termux-wake-lock
+	trap 'termux-wake-unlock' EXIT
+fi
+exec /data/data/com.termux/files/usr/bin/sentinel "$@"
