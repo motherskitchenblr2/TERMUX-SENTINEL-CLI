@@ -7,7 +7,13 @@
 
 set -e
 
-BASE_REMOTE="remote_gdrive:Cloud_Backup"
+# Auto-detect configured rclone remote (gdrive or remote_gdrive)
+if rclone listremotes 2>/dev/null | grep -q "^gdrive:"; then
+	DEFAULT_REMOTE="gdrive:Cloud_Backup"
+else
+	DEFAULT_REMOTE="remote_gdrive:Cloud_Backup"
+fi
+BASE_REMOTE="${1:-$DEFAULT_REMOTE}"
 LOG_FILE="$HOME/rclone_backup.log"
 SHARED_STORAGE="/storage/emulated/0"
 TERMUX_HOME="$HOME"

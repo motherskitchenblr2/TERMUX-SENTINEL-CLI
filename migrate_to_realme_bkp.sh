@@ -6,7 +6,13 @@
 
 set -e
 
-BASE_REMOTE="remote_gdrive:Cloud_Backup"
+# Auto-detect configured rclone remote (gdrive or remote_gdrive)
+if rclone listremotes 2>/dev/null | grep -q "^gdrive:"; then
+	DEFAULT_REMOTE="gdrive:Cloud_Backup"
+else
+	DEFAULT_REMOTE="remote_gdrive:Cloud_Backup"
+fi
+BASE_REMOTE="${1:-$DEFAULT_REMOTE}"
 LOG_FILE="$HOME/rclone_backup.log"
 UBUNTU_ROOT="/data/data/com.termux/files/usr/var/lib/proot-distro/containers/ubuntu/rootfs/root"
 TERMUX_HOME="$HOME"
