@@ -27,7 +27,7 @@ def find_client_secret(custom_path=None):
     for pattern in search_patterns:
         for file_path in glob.glob(pattern):
             try:
-                with open(file_path, "r", encoding="utf-8") as f:
+                with open(file_path, encoding="utf-8") as f:
                     data = json.load(f)
                     if "installed" in data or "web" in data or "client_id" in data:
                         return file_path
@@ -47,7 +47,7 @@ def main():
 
     print(f"[*] Found credentials file: {secret_file}")
 
-    with open(secret_file, "r", encoding="utf-8") as f:
+    with open(secret_file, encoding="utf-8") as f:
         data = json.load(f)
 
     creds = data.get("installed") or data.get("web") or data
@@ -78,7 +78,9 @@ def main():
     with open(CONFIG_PATH, "w", encoding="utf-8") as f:
         cfg.write(f)
 
-    print("[✓] Successfully updated ~/.config/rclone/rclone.conf with your OAuth Client credentials!")
+    print(
+        "[✓] Successfully updated ~/.config/rclone/rclone.conf with your OAuth Client credentials!"
+    )
     print("\n[NEXT STEP] Run the following command in Termux to authorize with Google Drive:")
     print("    rclone config reconnect gdrive:\n")
 
