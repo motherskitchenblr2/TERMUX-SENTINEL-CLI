@@ -1,23 +1,26 @@
 #!/data/data/com.termux/files/usr/bin/bash
 # =============================================================================
-# Android Device -> Google Drive Cloud Migration
-# Target Remote: remote_gdrive:Cloud_Backup
-# Target Goal: High-Efficiency Parallel Streaming (Links Preserved)
+# CMF Device -> Google Drive Cloud Migration & Safe Mirror
+# Target: gdrive:CMF_BKP/
+#   ├── Emulated/   -> /storage/emulated/0
+#   ├── Termux/     -> /data/data/com.termux/files/home
+#   └── Ubuntu/     -> /data/data/com.termux/files/usr/var/lib/proot-distro/containers/ubuntu/rootfs
 # =============================================================================
 
 set -e
 
 # Auto-detect configured rclone remote (gdrive or remote_gdrive)
 if rclone listremotes 2>/dev/null | grep -q "^gdrive:"; then
-	DEFAULT_REMOTE="gdrive:Cloud_Backup"
+	DEFAULT_REMOTE="gdrive:CMF_BKP"
 else
-	DEFAULT_REMOTE="remote_gdrive:Cloud_Backup"
+	DEFAULT_REMOTE="remote_gdrive:CMF_BKP"
 fi
 BASE_REMOTE="${1:-$DEFAULT_REMOTE}"
+TIMESTAMP="$(date +%Y%m%d_%H%M%S)"
 LOG_FILE="$HOME/rclone_backup.log"
 SHARED_STORAGE="/storage/emulated/0"
 TERMUX_HOME="$HOME"
-UBUNTU_ROOT="/data/data/com.termux/files/usr/var/lib/proot-distro/containers/ubuntu/rootfs/root"
+UBUNTU_ROOT="/data/data/com.termux/files/usr/var/lib/proot-distro/containers/ubuntu/rootfs"
 
 # Prevent Android from killing process when screen is locked
 if command -v termux-wake-lock >/dev/null 2>&1; then
@@ -26,73 +29,75 @@ if command -v termux-wake-lock >/dev/null 2>&1; then
 fi
 
 echo "=========================================================="
-echo " 📱 ANDROID TERMINAL -> GOOGLE DRIVE CLOUD MIGRATION"
-echo " Target Remote: $BASE_REMOTE"
-echo " Mode: High-Efficiency Parallel Streaming (Links Preserved)"
-echo " Log File: $LOG_FILE"
+echo " 📱 DEVICE -> GOOGLE DRIVE CLOUD SYNC (CMF_BKP)"
+echo " Remote Target: $BASE_REMOTE"
+echo " Safe Deletion: Enabled (--delete-after with --backup-dir)"
+echo " Log File:      $LOG_FILE"
 echo "=========================================================="
 
-RCLONE_FLAGS=(
+RCLONE_COMMON_FLAGS=(
 	--links
 	--fast-list
 	--drive-chunk-size 64M
 	--transfers 4
 	--checkers 8
+	--delete-after
 	--log-file "$LOG_FILE"
 	--log-level INFO
 	-P
 )
 
-# 1. IMPORTANT DOCUMENTS & PROTECTED MEDIA (Targeted Mirror)
+# 1. EMULATED STORAGE (/storage/emulated/0 -> CMF_BKP/Emulated)
 echo ""
-echo "[1/4] Syncing Important Documents & Media..."
-if [ -d "$SHARED_STORAGE/Important_Documents" ]; then
-	echo "  -> Mirroring Important Documents to $BASE_REMOTE/Important_Documents..."
-	rclone copy "$SHARED_STORAGE/Important_Documents" "$BASE_REMOTE/Important_Documents" "${RCLONE_FLAGS[@]}"
+echo "[1/3] Syncing Local Storage (/storage/emulated/0 -> $BASE_REMOTE/Emulated)..."
+if [ -d "$SHARED_STORAGE" ]; then
+	rclone sync "$SHARED_STORAGE" "$BASE_REMOTE/Emulated" "${RCLONE_COMMON_FLAGS[@]}" \
+		--backup-dir "$BASE_REMOTE/Trash_Archive/Emulated/$TIMESTAMP" \
+		--exclude "Android/data/**" \
+		--exclude "Android/obb/**" \
+		--exclude ".thumbnails/**" \
+		--exclude ".trashed*/**" \
+		--exclude "Trash/**" \
+		--exclude ".recycle/**" \
+		--exclude "LOST.DIR/**"
+else
+	echo "  [!] Warning: $SHARED_STORAGE not accessible. Check storage permissions."
 fi
 
-if [ -d "$SHARED_STORAGE/Documents" ]; then
-	echo "  -> Mirroring Documents to $BASE_REMOTE/Documents..."
-	rclone copy "$SHARED_STORAGE/Documents" "$BASE_REMOTE/Documents" "${RCLONE_FLAGS[@]}"
-fi
-
-# 2. MULTIMEDIA & DOWNLOADS
+# 2. TERMUX HOME DIRECTORY ($HOME -> CMF_BKP/Termux)
 echo ""
-echo "[2/4] Syncing Media & Downloads (DCIM, Movies, Downloads, Pictures)..."
-for FOLDER in DCIM Download Movies Pictures Documents Music Videos; do
-	if [ -d "$SHARED_STORAGE/$FOLDER" ]; then
-		echo "  -> Processing $FOLDER..."
-		rclone copy "$SHARED_STORAGE/$FOLDER" "$BASE_REMOTE/$FOLDER" "${RCLONE_FLAGS[@]}" \
-			--exclude ".thumbnails/**" \
-			--exclude "Trash/**" \
-			--exclude ".trashed*/**"
-	fi
-done
-
-# 3. TERMUX CLI SCRIPTS, WORKSPACES & CONFIGURATIONS
-echo ""
-echo "[3/4] Syncing Termux Workspaces & Configurations..."
-rclone copy "$TERMUX_HOME" "$BASE_REMOTE/Termux_Home" "${RCLONE_FLAGS[@]}" \
+echo "[2/3] Syncing Termux Directory ($TERMUX_HOME -> $BASE_REMOTE/Termux)..."
+rclone sync "$TERMUX_HOME" "$BASE_REMOTE/Termux" "${RCLONE_COMMON_FLAGS[@]}" \
+	--backup-dir "$BASE_REMOTE/Trash_Archive/Termux/$TIMESTAMP" \
+	--exclude "storage/**" \
 	--exclude ".cache/**" \
 	--exclude ".npm/**" \
 	--exclude ".bun/install/cache/**" \
 	--exclude ".local/share/pnpm/**" \
 	--exclude ".local/share/uv/cache/**" \
-	--exclude "storage/**" \
 	--exclude "*.log"
 
-# 4. PROOT-DISTRO UBUNTU WORKSPACE (/root)
+# 3. PROOT-DISTRO UBUNTU ROOTFS (-> CMF_BKP/Ubuntu)
 if [ -d "$UBUNTU_ROOT" ]; then
 	echo ""
-	echo "[4/4] Syncing Ubuntu PRoot-Distro Workspace (/root)..."
-	rclone copy "$UBUNTU_ROOT" "$BASE_REMOTE/Ubuntu_Root" "${RCLONE_FLAGS[@]}" \
+	echo "[3/3] Syncing Ubuntu PRoot-Distro ($UBUNTU_ROOT -> $BASE_REMOTE/Ubuntu)..."
+	rclone sync "$UBUNTU_ROOT" "$BASE_REMOTE/Ubuntu" "${RCLONE_COMMON_FLAGS[@]}" \
+		--backup-dir "$BASE_REMOTE/Trash_Archive/Ubuntu/$TIMESTAMP" \
+		--exclude "proc/**" \
+		--exclude "sys/**" \
+		--exclude "dev/**" \
+		--exclude "tmp/**" \
+		--exclude "run/**" \
 		--exclude ".cache/**" \
-		--exclude ".npm/**"
+		--exclude "var/cache/**"
+else
+	echo ""
+	echo "  [!] Info: Ubuntu rootfs not found at $UBUNTU_ROOT (skipped)."
 fi
 
 echo ""
 echo "=========================================================="
 echo " ✓ Cloud Sync to $BASE_REMOTE completed successfully!"
 echo " Log file: $LOG_FILE"
-echo " Run 'sentinel' to audit and purge caches."
+echo " Run 'sentinel' anytime to check system health."
 echo "=========================================================="
