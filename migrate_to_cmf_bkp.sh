@@ -9,6 +9,24 @@
 
 set -e
 
+LOCK_FILE="$HOME/.rclone_backup.lock"
+if [ -f "$LOCK_FILE" ]; then
+	PID=$(cat "$LOCK_FILE" 2>/dev/null)
+	if [ -n "$PID" ] && kill -0 "$PID" 2>/dev/null; then
+		echo "[!] Backup process is already running (PID: $PID)."
+		echo "    Monitor progress with: tail -f ~/rclone_backup.log"
+		exit 0
+	fi
+fi
+echo "$$" > "$LOCK_FILE"
+cleanup() {
+	rm -f "$LOCK_FILE"
+	if command -v termux-wake-unlock >/dev/null 2>&1; then
+		termux-wake-unlock 2>/dev/null || true
+	fi
+}
+trap cleanup EXIT INT TERM
+
 # Auto-detect configured rclone remote (gdrive or remote_gdrive)
 if rclone listremotes 2>/dev/null | grep -q "^gdrive:"; then
 	DEFAULT_REMOTE="gdrive:CMF_BKP"
@@ -22,10 +40,9 @@ SHARED_STORAGE="/storage/emulated/0"
 TERMUX_HOME="$HOME"
 UBUNTU_ROOT="/data/data/com.termux/files/usr/var/lib/proot-distro/containers/ubuntu/rootfs"
 
-# Prevent Android from killing process when screen is locked
+# Prevent Android from sleeping during upload
 if command -v termux-wake-lock >/dev/null 2>&1; then
 	termux-wake-lock
-	trap 'termux-wake-unlock' EXIT
 fi
 
 echo "=========================================================="
@@ -33,6 +50,7 @@ echo " 📱 DEVICE -> GOOGLE DRIVE CLOUD SYNC (CMF_BKP)"
 echo " Remote Target: $BASE_REMOTE"
 echo " Safe Deletion: Enabled (--delete-after with --backup-dir)"
 echo " Log File:      $LOG_FILE"
+echo " Started At:    $(date)"
 echo "=========================================================="
 
 RCLONE_COMMON_FLAGS=(
@@ -98,6 +116,7 @@ fi
 echo ""
 echo "=========================================================="
 echo " ✓ Cloud Sync to $BASE_REMOTE completed successfully!"
-echo " Log file: $LOG_FILE"
+echo " Finished At: $(date)"
+echo " Log file:    $LOG_FILE"
 echo " Run 'sentinel' anytime to check system health."
 echo "=========================================================="
