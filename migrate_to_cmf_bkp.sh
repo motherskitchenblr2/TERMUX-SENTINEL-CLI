@@ -2,9 +2,9 @@
 # =============================================================================
 # CMF Device -> Google Drive Cloud Migration & Safe Mirror
 # Target: gdrive:CMF_BKP/
-#   ├── Emulated/   -> /storage/emulated/0
-#   ├── Termux/     -> /data/data/com.termux/files/home
-#   └── Ubuntu/     -> /data/data/com.termux/files/usr/var/lib/proot-distro/containers/ubuntu/rootfs
+#   ├── Emulated/   -> /storage/emulated/0 (Photos, Documents, Downloads, Media)
+#   ├── Termux/     -> /data/data/com.termux/files/home (Projects, Configs, Tools)
+#   └── Ubuntu/     -> /data/data/com.termux/files/usr/var/lib/proot-distro/containers/ubuntu/rootfs/root (Workspace)
 # =============================================================================
 
 set -e
@@ -38,7 +38,7 @@ TIMESTAMP="$(date +%Y%m%d_%H%M%S)"
 LOG_FILE="$HOME/rclone_backup.log"
 SHARED_STORAGE="/storage/emulated/0"
 TERMUX_HOME="$HOME"
-UBUNTU_ROOT="/data/data/com.termux/files/usr/var/lib/proot-distro/containers/ubuntu/rootfs"
+UBUNTU_ROOT="/data/data/com.termux/files/usr/var/lib/proot-distro/containers/ubuntu/rootfs/root"
 
 # Prevent Android from sleeping during upload
 if command -v termux-wake-lock >/dev/null 2>&1; then
@@ -46,7 +46,7 @@ if command -v termux-wake-lock >/dev/null 2>&1; then
 fi
 
 echo "=========================================================="
-echo " 📱 DEVICE -> GOOGLE DRIVE CLOUD SYNC (CMF_BKP)"
+echo " 📱 HIGH-SPEED SAFE CLOUD SYNC -> GOOGLE DRIVE"
 echo " Remote Target: $BASE_REMOTE"
 echo " Safe Deletion: Enabled (--delete-after with --backup-dir)"
 echo " Log File:      $LOG_FILE"
@@ -57,8 +57,8 @@ RCLONE_COMMON_FLAGS=(
 	--links
 	--fast-list
 	--drive-chunk-size 64M
-	--transfers 4
-	--checkers 8
+	--transfers 8
+	--checkers 12
 	--delete-after
 	--log-file "$LOG_FILE"
 	--log-level INFO
@@ -67,7 +67,7 @@ RCLONE_COMMON_FLAGS=(
 
 # 1. EMULATED STORAGE (/storage/emulated/0 -> CMF_BKP/Emulated)
 echo ""
-echo "[1/3] Syncing Local Storage (/storage/emulated/0 -> $BASE_REMOTE/Emulated)..."
+echo "[1/3] Syncing Phone Storage (/storage/emulated/0 -> $BASE_REMOTE/Emulated)..."
 if [ -d "$SHARED_STORAGE" ]; then
 	rclone sync "$SHARED_STORAGE" "$BASE_REMOTE/Emulated" "${RCLONE_COMMON_FLAGS[@]}" \
 		--backup-dir "$BASE_REMOTE/Trash_Archive/Emulated/$TIMESTAMP" \
@@ -84,33 +84,40 @@ fi
 
 # 2. TERMUX HOME DIRECTORY ($HOME -> CMF_BKP/Termux)
 echo ""
-echo "[2/3] Syncing Termux Directory ($TERMUX_HOME -> $BASE_REMOTE/Termux)..."
+echo "[2/3] Syncing Termux Workspaces & Configs ($TERMUX_HOME -> $BASE_REMOTE/Termux)..."
 rclone sync "$TERMUX_HOME" "$BASE_REMOTE/Termux" "${RCLONE_COMMON_FLAGS[@]}" \
 	--backup-dir "$BASE_REMOTE/Trash_Archive/Termux/$TIMESTAMP" \
 	--exclude "storage/**" \
-	--exclude ".cache/**" \
-	--exclude ".npm/**" \
-	--exclude ".bun/install/cache/**" \
-	--exclude ".local/share/pnpm/**" \
-	--exclude ".local/share/uv/cache/**" \
+	--exclude "**/node_modules/**" \
+	--exclude "**/.pnpm-store/**" \
+	--exclude "**/.venv/**" \
+	--exclude "**/venv/**" \
+	--exclude "**/.git/objects/**" \
+	--exclude ".gemini/antigravity-cli/brain/**" \
+	--exclude "**/.cache/**" \
+	--exclude "**/.npm/**" \
+	--exclude "**/.bun/install/cache/**" \
+	--exclude "**/.local/share/pnpm/**" \
+	--exclude "**/.local/share/uv/cache/**" \
+	--exclude "**/.next/**" \
 	--exclude "*.log"
 
-# 3. PROOT-DISTRO UBUNTU ROOTFS (-> CMF_BKP/Ubuntu)
+# 3. PROOT-DISTRO UBUNTU WORKSPACE (/root -> CMF_BKP/Ubuntu)
 if [ -d "$UBUNTU_ROOT" ]; then
 	echo ""
-	echo "[3/3] Syncing Ubuntu PRoot-Distro ($UBUNTU_ROOT -> $BASE_REMOTE/Ubuntu)..."
+	echo "[3/3] Syncing Ubuntu PRoot Workspace ($UBUNTU_ROOT -> $BASE_REMOTE/Ubuntu)..."
 	rclone sync "$UBUNTU_ROOT" "$BASE_REMOTE/Ubuntu" "${RCLONE_COMMON_FLAGS[@]}" \
 		--backup-dir "$BASE_REMOTE/Trash_Archive/Ubuntu/$TIMESTAMP" \
-		--exclude "proc/**" \
-		--exclude "sys/**" \
-		--exclude "dev/**" \
-		--exclude "tmp/**" \
-		--exclude "run/**" \
-		--exclude ".cache/**" \
-		--exclude "var/cache/**"
+		--exclude "**/node_modules/**" \
+		--exclude "**/.cache/**" \
+		--exclude "**/.venv/**" \
+		--exclude "**/venv/**" \
+		--exclude "**/.git/objects/**" \
+		--exclude "**/.npm/**" \
+		--exclude "*.log"
 else
 	echo ""
-	echo "  [!] Info: Ubuntu rootfs not found at $UBUNTU_ROOT (skipped)."
+	echo "  [!] Info: Ubuntu workspace not found at $UBUNTU_ROOT (skipped)."
 fi
 
 echo ""
