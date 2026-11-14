@@ -28,7 +28,7 @@ jobs:
           pip-compile --extra dev --upgrade -o requirements-dev.txt pyproject.toml
 
       - name: Create Pull Request for Python deps
-        uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8.0.0
+        uses: peter-evans/create-pull-request@15733dbdfeedb4f7fdb73d13c6f5ac83b710fab8 # v8.0.0
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           commit-message: "chore(deps): update Python packages"
