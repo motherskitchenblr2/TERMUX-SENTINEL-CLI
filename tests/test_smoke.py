@@ -5,8 +5,8 @@
 import json
 from pathlib import Path
 
-import Termux_Sentinel
 import setup_gdrive_credentials
+import Termux_Sentinel
 
 
 def test_import_and_entrypoints():
