@@ -2332,7 +2332,9 @@ def cli_hunt(threshold_mb=100, scan_path=HOME_DIR):
         return
 
     if not candidates:
-        print(f"\n{NEON_GREEN}✓ Clean! No unmanaged directories exceed {threshold_mb} MB.{C_RESET}\n")
+        print(
+            f"\n{NEON_GREEN}✓ Clean! No unmanaged directories exceed {threshold_mb} MB.{C_RESET}\n"
+        )
         return
 
     candidates.sort(key=lambda x: x[1], reverse=True)
@@ -2356,7 +2358,9 @@ def cli_hunt(threshold_mb=100, scan_path=HOME_DIR):
 
         print(f"  {NEON_YELLOW}{sz_str:<10}{C_RESET} {BRIGHT_WHITE}{rel}{C_RESET}{tag}")
 
-    print(f"\n{NEON_CYAN}Tip: Move heavy directories to cloud with: {NEON_GREEN}sentinel offload <path>{C_RESET}\n")
+    print(
+        f"\n{NEON_CYAN}Tip: Move heavy directories to cloud with: {NEON_GREEN}sentinel offload <path>{C_RESET}\n"
+    )
 
 
 def cli_offload(target_path, remote_folder="Offloaded"):
@@ -2377,7 +2381,9 @@ def cli_offload(target_path, remote_folder="Offloaded"):
 
     remotes_out = ""
     try:
-        remotes_out = subprocess.check_output([rclone_bin, "listremotes"], text=True, stderr=subprocess.DEVNULL)
+        remotes_out = subprocess.check_output(
+            [rclone_bin, "listremotes"], text=True, stderr=subprocess.DEVNULL
+        )
     except Exception:
         pass
 
@@ -2420,7 +2426,9 @@ def cli_autoclean():
     cli_clean(safe_only=True, dry_run=False, auto_yes=True)
 
     _used_a, _total_a, free_a, _ = get_disk_usage()
-    log_entry = f"[{timestamp}] Auto-clean completed. Free before: {free_b} | Free after: {free_a}\n"
+    log_entry = (
+        f"[{timestamp}] Auto-clean completed. Free before: {free_b} | Free after: {free_a}\n"
+    )
     try:
         with open(log_file, "a", encoding="utf-8") as f:
             f.write(log_entry)
@@ -2433,9 +2441,12 @@ def cli_autoclean():
             subprocess.run(
                 [
                     termux_notify,
-                    "--title", "Termux Sentinel Auto-Clean",
-                    "--content", f"Maintenance complete. Free space: {free_a}",
-                    "--id", "sentinel_clean",
+                    "--title",
+                    "Termux Sentinel Auto-Clean",
+                    "--content",
+                    f"Maintenance complete. Free space: {free_a}",
+                    "--id",
+                    "sentinel_clean",
                 ],
                 check=False,
                 stderr=subprocess.DEVNULL,
