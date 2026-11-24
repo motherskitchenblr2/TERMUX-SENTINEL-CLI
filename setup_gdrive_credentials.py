@@ -45,7 +45,7 @@ def main():
         print("    Usage: python3 setup_gdrive_credentials.py [/path/to/client_secret.json]")
         sys.exit(1)
 
-    print(f"[*] Found credentials file: {secret_file}")
+    print("[*] Found valid credentials file.")
 
     with open(secret_file, encoding="utf-8") as f:
         data = json.load(f)
