@@ -447,6 +447,17 @@ def get_disk_usage():
         return "N/A", "N/A", "N/A", "N/A"
 
 
+def check_storage_threshold(min_gb=5.0):
+    """Returns (is_critical, free_gb) based on available disk space in Termux."""
+    try:
+        stat = os.statvfs(HOME_DIR)
+        free_bytes = stat.f_bavail * stat.f_frsize
+        free_gb = free_bytes / (1024**3)
+        return free_gb < min_gb, round(free_gb, 2)
+    except Exception:
+        return False, 999.0
+
+
 def get_device_name():
     """Detects current mobile device brand & model dynamically."""
     try:
@@ -496,10 +507,14 @@ def render_hud_box(_view_name="DASHBOARD"):
 
     r1 = f"Used: {NEON_YELLOW}{used}{C_RESET} | Free: {NEON_GREEN}{free}{C_RESET} ({pct})"
     r2 = f"Vault: {NEON_GREEN}{vault_count} Active Shields [v]{C_RESET}"
+    is_crit, free_gb = check_storage_threshold(min_gb=5.0)
 
     print(top)
     print(make_box_row(r1, border_color=NEON_CYAN, cols=cols))
     print(make_box_row(r2, border_color=NEON_CYAN, cols=cols))
+    if is_crit:
+        r_warn = f"{NEON_RED}⚠️ CRITICAL SPACE: {free_gb} GB FREE! [sentinel clean -y]{C_RESET}"
+        print(make_box_row(r_warn, border_color=NEON_RED, cols=cols))
     print(bot)
 
 
@@ -2263,8 +2278,11 @@ def cli_cloud(_live=False, start=False):
         trace_path = os.path.join(HOME_DIR, "test_trace.log")
         with open(trace_path, "a", encoding="utf-8") as trace_log:
             bash_bin = shutil.which("bash") or "/bin/bash"
+            cmf_script = os.path.join(HOME_DIR, "migrate_to_cmf_bkp.sh")
+            repo_script = os.path.join(HOME_DIR, "TERMUX-SENTINEL-CLI", "migrate_to_cmf_bkp.sh")
+            script_path = cmf_script if os.path.isfile(cmf_script) else repo_script
             subprocess.Popen(  # nosec B603
-                [bash_bin, os.path.join(HOME_DIR, "migrate_to_realme_bkp.sh")],
+                [bash_bin, script_path],
                 stdout=trace_log,
                 stderr=subprocess.STDOUT,
                 start_new_session=True,
@@ -2287,6 +2305,143 @@ def cli_update():
             except (OSError, ValueError):
                 pass
     animate_safe("COMPLETED", "All system & dependency updates finished!", duration=0.6)
+
+
+def cli_hunt(threshold_mb=100, scan_path=HOME_DIR):
+    """Hunts bloated directories exceeding threshold_mb in scan_path."""
+    animate_safe("HUNTING", f"Scanning directories >{threshold_mb}MB...", duration=0.6)
+    print_section_h2(f"BLOAT HUNTER: TARGETS > {threshold_mb} MB")
+
+    if not os.path.exists(scan_path):
+        print(f"{NEON_RED}Target path does not exist: {scan_path}{C_RESET}")
+        return
+
+    threshold_bytes = threshold_mb * 1024 * 1024
+    candidates = []
+
+    try:
+        for entry in os.scandir(scan_path):
+            if entry.is_symlink() or entry.name in ("storage", "proc", "sys", "dev"):
+                continue
+            if entry.is_dir(follow_symlinks=False):
+                sz = get_dir_size(entry.path)
+                if sz >= threshold_bytes:
+                    candidates.append((entry.path, sz))
+    except Exception as e:
+        print(f"{NEON_RED}Error scanning: {e}{C_RESET}")
+        return
+
+    if not candidates:
+        print(f"\n{NEON_GREEN}✓ Clean! No unmanaged directories exceed {threshold_mb} MB.{C_RESET}\n")
+        return
+
+    candidates.sort(key=lambda x: x[1], reverse=True)
+    cols = get_term_cols()
+
+    print(f"\n{C_BOLD}{BRIGHT_WHITE}{'SIZE':<12} {'TARGET DIRECTORY':<{cols - 16}}{C_RESET}")
+    print(f"{NEON_CYAN}{'─' * (cols - 2)}{C_RESET}")
+
+    for path, sz in candidates:
+        rel = os.path.relpath(path, scan_path)
+        sz_str = human_size(sz)
+        tag = ""
+        if "node_modules" in path:
+            tag = f" {NEON_YELLOW}[NPM]{C_RESET}"
+        elif ".cache" in path or "cache" in path.lower():
+            tag = f" {NEON_PURPLE}[CACHE]{C_RESET}"
+        elif ".venv" in path or "site-packages" in path:
+            tag = f" {NEON_CYAN}[VENV]{C_RESET}"
+        elif is_protected(path):
+            tag = f" {NEON_GREEN}[VAULT SHIELD]{C_RESET}"
+
+        print(f"  {NEON_YELLOW}{sz_str:<10}{C_RESET} {BRIGHT_WHITE}{rel}{C_RESET}{tag}")
+
+    print(f"\n{NEON_CYAN}Tip: Move heavy directories to cloud with: {NEON_GREEN}sentinel offload <path>{C_RESET}\n")
+
+
+def cli_offload(target_path, remote_folder="Offloaded"):
+    """Safely offload heavy directory/file to Google Drive via Rclone and free local space."""
+    target_abs = os.path.abspath(os.path.expanduser(target_path))
+    if not os.path.exists(target_abs):
+        print(f"{NEON_RED}Error: Path does not exist: {target_abs}{C_RESET}")
+        return
+
+    if is_protected(target_abs):
+        print(f"{NEON_RED}Protected by Vault! Refusing to offload: {target_abs}{C_RESET}")
+        return
+
+    rclone_bin = shutil.which("rclone")
+    if not rclone_bin:
+        print(f"{NEON_RED}Error: rclone is not installed or not in PATH.{C_RESET}")
+        return
+
+    remotes_out = ""
+    try:
+        remotes_out = subprocess.check_output([rclone_bin, "listremotes"], text=True, stderr=subprocess.DEVNULL)
+    except Exception:
+        pass
+
+    remote_name = "gdrive" if "gdrive:" in remotes_out else "remote_gdrive"
+    remote_dest = f"{remote_name}:{remote_folder}/{os.path.basename(target_abs)}"
+    sz = get_dir_size(target_abs) if os.path.isdir(target_abs) else os.path.getsize(target_abs)
+
+    print_section_h2(f"CLOUD OFFLOADER: {human_size(sz)}")
+    print(f"Local Source : {NEON_CYAN}{target_abs}{C_RESET}")
+    print(f"Cloud Target : {NEON_GREEN}{remote_dest}{C_RESET}")
+
+    animate_safe("OFFLOADING", f"Transferring {human_size(sz)} to {remote_name}...", duration=0.8)
+
+    cmd = [rclone_bin, "move", target_abs, remote_dest, "--transfers", "4", "--stats", "2s"]
+    try:
+        subprocess.run(cmd, check=True)  # nosec B603
+        if os.path.isdir(target_abs) and os.path.exists(target_abs):
+            try:
+                os.rmdir(target_abs)
+            except OSError:
+                pass
+        print(f"\n{NEON_GREEN}✓ Successfully offloaded {human_size(sz)} to {remote_dest}{C_RESET}")
+        print(f"{NEON_GREEN}✓ Local space reclaimed!{C_RESET}\n")
+    except subprocess.CalledProcessError as e:
+        print(f"\n{NEON_RED}✗ Offload failed with exit code {e.returncode}{C_RESET}\n")
+    except Exception as e:
+        print(f"\n{NEON_RED}✗ Offload error: {e}{C_RESET}\n")
+
+
+def cli_autoclean():
+    """Headless automated maintenance for Termux Widget and Cron schedulers."""
+    log_dir = os.path.join(HOME_DIR, ".config", "termux_sentinel")
+    os.makedirs(log_dir, exist_ok=True)
+    log_file = os.path.join(log_dir, "sentinel_autoclean.log")
+
+    _used_b, _total_b, free_b, _ = get_disk_usage()
+    timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
+
+    # Run safe purge
+    cli_clean(safe_only=True, dry_run=False, auto_yes=True)
+
+    _used_a, _total_a, free_a, _ = get_disk_usage()
+    log_entry = f"[{timestamp}] Auto-clean completed. Free before: {free_b} | Free after: {free_a}\n"
+    try:
+        with open(log_file, "a", encoding="utf-8") as f:
+            f.write(log_entry)
+    except OSError:
+        pass
+
+    termux_notify = shutil.which("termux-notification")
+    if termux_notify:
+        try:
+            subprocess.run(
+                [
+                    termux_notify,
+                    "--title", "Termux Sentinel Auto-Clean",
+                    "--content", f"Maintenance complete. Free space: {free_a}",
+                    "--id", "sentinel_clean",
+                ],
+                check=False,
+                stderr=subprocess.DEVNULL,
+            )
+        except Exception:
+            pass
 
 
 def cli_help():
@@ -2321,6 +2476,10 @@ def cli_help():
         ("sentinel update", "Upgrade All Packages"),
         ("sentinel cloud", "View Live Cloud Sync"),
         ("sentinel cloud -s", "Start Background Sync"),
+        ("sentinel hunt", "Scan Bloat Dirs >100M"),
+        ("sentinel hunt [MB]", "Custom Bloat Threshold"),
+        ("sentinel offload <path>", "Move Dir to Cloud"),
+        ("sentinel auto-clean", "Headless Auto Prune"),
         ("sentinel help", "CLI Command Manual"),
     ]
 
@@ -2376,6 +2535,24 @@ def cli_entrypoint():
         start = any(a in ("--start", "-s") for a in sys.argv[2:])
         live = any(a in ("--live", "-l") for a in sys.argv[2:])
         cli_cloud(live=live, start=start)
+    elif cmd in ("hunt", "bloat"):
+        threshold_mb = 100
+        scan_path = HOME_DIR
+        for arg in sys.argv[2:]:
+            if arg.isdigit():
+                threshold_mb = int(arg)
+            elif os.path.exists(arg):
+                scan_path = arg
+        cli_hunt(threshold_mb=threshold_mb, scan_path=scan_path)
+    elif cmd in ("offload", "archive-cloud"):
+        if len(sys.argv) < 3:
+            print(f"{NEON_RED}Usage: sentinel offload <path> [remote_folder]{C_RESET}")
+        else:
+            target_path = sys.argv[2]
+            remote_folder = sys.argv[3] if len(sys.argv) > 3 else "Offloaded"
+            cli_offload(target_path=target_path, remote_folder=remote_folder)
+    elif cmd in ("auto-clean", "autoclean", "cron"):
+        cli_autoclean()
     elif cmd in ("update", "upgrade"):
         cli_update()
     elif cmd in ("help", "-h", "--help"):

@@ -95,7 +95,13 @@ sentinel bots kill <p> # Terminate process by PID with animated confirmation
 # ☁️ Cloud Sync & System Updates
 sentinel cloud         # View live Rclone Google Drive backup stream
 sentinel cloud -s      # Start background cloud migration daemon
+sentinel offload <dir> # Move heavy directory to Google Drive & reclaim local space
 sentinel update        # Upgrade pkg, apt, pip, and global npm packages
+
+# 🔍 Bloat Hunter & Automated Maintenance
+sentinel hunt          # Deep scan directories eating >100 MB (npm, venv, cache)
+sentinel hunt 500      # Custom threshold bloat hunt (e.g. >500 MB)
+sentinel auto-clean    # Headless cron/widget auto-pruner with audit logging
 sentinel help          # Display full CLI manual
 ```
 
@@ -162,15 +168,15 @@ Termux-Sentinel is designed to run seamlessly across Android mobile workstations
 
 ```text
 TERMUX-SENTINEL/
-├── Termux_Sentinel.py                  # Core Sentinel Engine (TUI + CLI)
+├── Termux_Sentinel.py                  # Core Sentinel Engine (Zero-dependency TUI + CLI)
 ├── install_or_restore.sh               # One-tap installer and environment restorer
 ├── vault.json                          # Default Preservation Vault configuration
-├── Termux_Sentinel.sh                  # Termux Widget one-tap launcher
-├── 3_Termux_Sentinel.sh                # Numbered widget shortcut with wake-lock
-├── Backup_to_Drive.sh                  # Dedicated documents & storage backup script
-├── migrate_to_realme_bkp.sh            # High-efficiency cloud migration script
-├── migrate_to_cmf_bkp.sh               # Device cloud migration script
+├── Termux-Sentinel                     # Termux Widget one-tap launcher with wake-lock
+├── migrate_to_cmf_bkp.sh               # Device cloud migration script (Rclone)
+├── setup_gdrive_credentials.py         # Google OAuth & token refresher helper
 ├── rclone.conf.template                # Sanitized Google Drive rclone template
+├── pyproject.toml                      # Zero-dependency packaging specification
+├── requirements.txt                    # Pure standard library specification
 ├── LICENSE                             # Apache 2.0 License
 └── README.md                           # Master Documentation & Manual
 ```

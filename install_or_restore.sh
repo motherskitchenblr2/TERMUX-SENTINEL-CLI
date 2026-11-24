@@ -67,40 +67,12 @@ if [ -n "$SRC_W0" ]; then
 	echo " ✓ Installed Termux Widget: ~/.shortcuts/Termux-Sentinel"
 fi
 
-SRC_W1="$(find_src "3_Termux_Sentinel.sh")"
-if [ -n "$SRC_W1" ]; then
-	cp -vf "$SRC_W1" "$HOME_DIR/.shortcuts/3_Termux_Sentinel.sh"
-	chmod 755 "$HOME_DIR/.shortcuts/3_Termux_Sentinel.sh"
-	echo " ✓ Installed Termux Widget: ~/.shortcuts/3_Termux_Sentinel.sh"
-fi
-
-SRC_W2="$(find_src "Termux_Sentinel.sh")"
-if [ -n "$SRC_W2" ]; then
-	cp -vf "$SRC_W2" "$HOME_DIR/.shortcuts/Termux_Sentinel.sh"
-	chmod 755 "$HOME_DIR/.shortcuts/Termux_Sentinel.sh"
-	echo " ✓ Installed Termux Widget: ~/.shortcuts/Termux_Sentinel.sh"
-fi
-
 # 5. Restore Cloud & Backup Scripts
-SRC_REALME="$(find_src "migrate_to_realme_bkp.sh")"
-if [ -n "$SRC_REALME" ]; then
-	cp -vf "$SRC_REALME" "$HOME_DIR/migrate_to_realme_bkp.sh"
-	chmod +x "$HOME_DIR/migrate_to_realme_bkp.sh"
-	echo " ✓ Installed Realme Cloud Migration: ~/migrate_to_realme_bkp.sh"
-fi
-
 SRC_CMF="$(find_src "migrate_to_cmf_bkp.sh")"
 if [ -n "$SRC_CMF" ]; then
 	cp -vf "$SRC_CMF" "$HOME_DIR/migrate_to_cmf_bkp.sh"
 	chmod +x "$HOME_DIR/migrate_to_cmf_bkp.sh"
 	echo " ✓ Installed CMF Cloud Migration: ~/migrate_to_cmf_bkp.sh"
-fi
-
-SRC_BKP="$(find_src "Backup_to_Drive.sh")"
-if [ -n "$SRC_BKP" ]; then
-	cp -vf "$SRC_BKP" "$HOME_DIR/.shortcuts/Backup_to_Drive.sh"
-	chmod +x "$HOME_DIR/.shortcuts/Backup_to_Drive.sh"
-	echo " ✓ Installed Backup to Drive: ~/.shortcuts/Backup_to_Drive.sh"
 fi
 
 # 6. Setup Rclone Configuration

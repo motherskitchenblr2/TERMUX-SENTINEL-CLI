@@ -107,3 +107,21 @@ def test_gdrive_setup_skips_invalid_json(tmp_path, monkeypatch):
     )
 
     assert setup_gdrive_credentials.find_client_secret() == str(valid_path)
+
+
+def test_storage_threshold_check():
+    """Verify storage threshold detector function."""
+    assert hasattr(Termux_Sentinel, "check_storage_threshold")
+    is_crit, free_gb = Termux_Sentinel.check_storage_threshold(min_gb=1.0)
+    assert isinstance(is_crit, bool)
+    assert isinstance(free_gb, float)
+
+
+def test_bloat_hunter_and_offload_entrypoints():
+    """Verify new CLI commands exist and are callable."""
+    assert hasattr(Termux_Sentinel, "cli_hunt")
+    assert hasattr(Termux_Sentinel, "cli_offload")
+    assert hasattr(Termux_Sentinel, "cli_autoclean")
+    assert callable(Termux_Sentinel.cli_hunt)
+    assert callable(Termux_Sentinel.cli_offload)
+    assert callable(Termux_Sentinel.cli_autoclean)
