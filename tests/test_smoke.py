@@ -87,8 +87,8 @@ def test_gdrive_setup_does_not_log_credentials_path(tmp_path, monkeypatch, capsy
     assert str(credentials_path) not in output
 
 
-def test_gdrive_find_credentials_skips_invalid_json(tmp_path, monkeypatch):
-    """Invalid credential candidates must not prevent finding a later valid file."""
+def test_gdrive_setup_skips_invalid_json(tmp_path, monkeypatch):
+    """Credential discovery skips malformed files and continues searching."""
     invalid_path = tmp_path / "invalid.json"
     invalid_path.write_text("{not valid json", encoding="utf-8")
     valid_path = tmp_path / "client_secret.json"
@@ -96,11 +96,14 @@ def test_gdrive_find_credentials_skips_invalid_json(tmp_path, monkeypatch):
         json.dumps({"installed": {"client_id": "test", "client_secret": "test"}}),
         encoding="utf-8",
     )
-
     monkeypatch.setattr(
-        setup_gdrive_credentials.glob,
-        "glob",
-        lambda _pattern: [str(invalid_path), str(valid_path)],
+        setup_gdrive_credentials.os.path,
+        "expanduser",
+        lambda path: (
+            str(tmp_path)
+            if path == "~"
+            else str(tmp_path / path[2:]) if path.startswith("~/") else path
+        ),
     )
 
     assert setup_gdrive_credentials.find_client_secret() == str(valid_path)
