@@ -85,3 +85,22 @@ def test_gdrive_setup_does_not_log_credentials_path(tmp_path, monkeypatch, capsy
 
     output = capsys.readouterr().out
     assert str(credentials_path) not in output
+
+
+def test_gdrive_find_credentials_skips_invalid_json(tmp_path, monkeypatch):
+    """Invalid credential candidates must not prevent finding a later valid file."""
+    invalid_path = tmp_path / "invalid.json"
+    invalid_path.write_text("{not valid json", encoding="utf-8")
+    valid_path = tmp_path / "client_secret.json"
+    valid_path.write_text(
+        json.dumps({"installed": {"client_id": "test", "client_secret": "test"}}),
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(
+        setup_gdrive_credentials.glob,
+        "glob",
+        lambda _pattern: [str(invalid_path), str(valid_path)],
+    )
+
+    assert setup_gdrive_credentials.find_client_secret() == str(valid_path)

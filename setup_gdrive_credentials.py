@@ -29,10 +29,12 @@ def find_client_secret(custom_path=None):
             try:
                 with open(file_path, encoding="utf-8") as f:
                     data = json.load(f)
-                    if "installed" in data or "web" in data or "client_id" in data:
-                        return file_path
-            except Exception:
-                continue
+            except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+                data = None
+            if data is not None and (
+                "installed" in data or "web" in data or "client_id" in data
+            ):
+                return file_path
     return None
 
 
