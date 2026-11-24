@@ -99,11 +99,11 @@ def test_gdrive_setup_skips_invalid_json(tmp_path, monkeypatch):
     monkeypatch.setattr(
         setup_gdrive_credentials.os.path,
         "expanduser",
-        lambda path: str(tmp_path)
-        if path == "~"
-        else str(tmp_path / path[2:])
-        if path.startswith("~/")
-        else path,
+        lambda path: (
+            str(tmp_path)
+            if path == "~"
+            else str(tmp_path / path[2:]) if path.startswith("~/") else path
+        ),
     )
 
     assert setup_gdrive_credentials.find_client_secret() == str(valid_path)
