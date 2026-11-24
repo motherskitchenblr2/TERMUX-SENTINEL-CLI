@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 
 import Termux_Sentinel
+import setup_gdrive_credentials
 
 
 def test_import_and_entrypoints():
@@ -56,3 +57,31 @@ def test_vault_protection_logic():
     assert Termux_Sentinel.is_protected("/storage/emulated/0/Important_Documents/Notes") is True
     # An ephemeral cache path should NOT be protected
     assert Termux_Sentinel.is_protected("/data/data/com.termux/files/home/.cache/tmp_junk") is False
+
+
+def test_gdrive_setup_does_not_log_credentials_path(tmp_path, monkeypatch, capsys):
+    """The setup script must not print the credential file path."""
+    credentials_path = tmp_path / "client_secret.json"
+    credentials_path.write_text(
+        json.dumps(
+            {
+                "installed": {
+                    "client_id": "test-client-id",
+                    "client_secret": "test-client-secret",
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    config_path = tmp_path / ".config" / "rclone" / "rclone.conf"
+    monkeypatch.setattr(setup_gdrive_credentials, "CONFIG_PATH", str(config_path))
+    monkeypatch.setattr(
+        setup_gdrive_credentials.sys,
+        "argv",
+        ["setup_gdrive_credentials.py", str(credentials_path)],
+    )
+
+    setup_gdrive_credentials.main()
+
+    output = capsys.readouterr().out
+    assert str(credentials_path) not in output
