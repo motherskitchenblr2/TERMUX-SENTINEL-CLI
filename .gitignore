@@ -69,3 +69,16 @@ rclone_cmf_backup.log
 # OS Metadata
 .DS_Store
 Thumbs.db
+
+# --- secrets (managed by repo-guardian) ---
+!.env.example
+*.p12
+*.pfx
+*.keystore
+id_rsa
+id_ed25519
+.secrets
+secrets.json
+credentials.json
+# --- local/tooling noise ---
+node_modules/
