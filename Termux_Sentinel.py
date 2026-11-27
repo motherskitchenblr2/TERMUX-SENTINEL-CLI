@@ -3683,9 +3683,7 @@ def render_hardware_inspection_view():
     print(
         f"\n{C_BOLD}{NEON_PINK}CAPACITY CLASSIFICATION:{C_RESET} {BRIGHT_WHITE}{info['tier_title']}{C_RESET}"
     )
-    print(
-        f"\n{C_BOLD}{BRIGHT_WHITE}RECOMMENDED OFFLINE MODELS TO PULL:{C_RESET}"
-    )
+    print(f"\n{C_BOLD}{BRIGHT_WHITE}RECOMMENDED OFFLINE MODELS TO PULL:{C_RESET}")
 
     for idx, m in enumerate(info["recommended_models"], 1):
         is_pulled = any(m["name"].split(":")[0] in pm for pm in info["pulled_models"])
@@ -3715,13 +3713,13 @@ def render_hardware_inspection_view():
             cols=cols,
         )
     )
-    print(f"{NEON_CYAN}╚═══════════════════════════════════════════════════════╝{C_RESET}")
+    print(
+        f"{NEON_CYAN}╚═══════════════════════════════════════════════════════╝{C_RESET}"
+    )
 
     try:
         act = (
-            input(
-                f"\n{BG_CHARCOAL}{C_BOLD}{NEON_GREEN} Hardware Inspector ❯ {C_RESET}"
-            )
+            input(f"\n{BG_CHARCOAL}{C_BOLD}{NEON_GREEN} Hardware Inspector ❯ {C_RESET}")
             .strip()
             .lower()
         )
@@ -3856,7 +3854,7 @@ def validate_and_sync_models(provider_id, api_key):
 
 def interactive_ai_setup():
     """Interactive AI Provider selection and Live Sync Model Selector replicating OpenCode AI TUI."""
-    cols = get_term_cols()
+    get_term_cols()
     print_large_header()
     print_section_h2("AI PROVIDERS & LIVE SYNC MODEL SELECTOR", color=NEON_PINK)
 
@@ -4123,11 +4121,9 @@ def run_agentic_ai_advisor(
     clean_targets=None, apps_targets=None, bot_scripts=None, running_daemons=None
 ):
     """Feeds live system telemetry into the AI engine to generate an intelligent maintenance plan."""
-    cols = get_term_cols()
+    get_term_cols()
     print_large_header()
-    print_section_h2(
-        "AGENTIC AI SYSTEM ADVISOR & AUTONOMOUS PLANNER", color=NEON_PINK
-    )
+    print_section_h2("AGENTIC AI SYSTEM ADVISOR & AUTONOMOUS PLANNER", color=NEON_PINK)
 
     cfg = load_ai_config()
     print(
@@ -4170,11 +4166,15 @@ def run_agentic_ai_advisor(
     )
     advice = query_agentic_ai(context_prompt)
 
-    print(f"\n{NEON_CYAN}╔═ 🤖 AGENTIC AI ACTION PLAN ══════════════════════════╗{C_RESET}")
+    print(
+        f"\n{NEON_CYAN}╔═ 🤖 AGENTIC AI ACTION PLAN ══════════════════════════╗{C_RESET}"
+    )
     for line in advice.splitlines():
         if line.strip():
             print(f"  {BRIGHT_WHITE}{line}{C_RESET}")
-    print(f"{NEON_CYAN}╚═══════════════════════════════════════════════════════╝{C_RESET}")
+    print(
+        f"{NEON_CYAN}╚═══════════════════════════════════════════════════════╝{C_RESET}"
+    )
 
     print(
         f"\n{C_BOLD}{BRIGHT_WHITE}Execute recommended safe system cleanup now? (y/N): {C_RESET}",
@@ -4205,13 +4205,9 @@ def cli_ai(action="menu", *args):
     elif action in ("advise", "plan", "analyze"):
         run_agentic_ai_advisor()
     elif (
-        action in ("ask", "query")
-        or args
-        or (action not in ("menu", "status", "info"))
+        action in ("ask", "query") or args or (action not in ("menu", "status", "info"))
     ):
-        prompt = (
-            " ".join([action] + list(args)) if action != "ask" else " ".join(args)
-        )
+        prompt = " ".join([action] + list(args)) if action != "ask" else " ".join(args)
         cfg = load_ai_config()
         print(f"\n{NEON_CYAN}[AI Query] {BRIGHT_WHITE}{prompt}{C_RESET}")
         print(
@@ -4229,7 +4225,9 @@ def cli_ai(action="menu", *args):
             else f"{BADGE_YELLOW} MANUAL MODE (OFFLINE) {C_RESET}"
         )
         print(f"  Agent Status : {mode_str}")
-        print(f"  Provider     : {NEON_CYAN}{cfg.get('provider_name', 'Ollama')}{C_RESET}")
+        print(
+            f"  Provider     : {NEON_CYAN}{cfg.get('provider_name', 'Ollama')}{C_RESET}"
+        )
         print(f"  Active Model : {NEON_GREEN}{cfg.get('model', 'None')}{C_RESET}")
         print(f"  Endpoint URL : {TEXT_MUTED}{cfg.get('base_url', 'N/A')}{C_RESET}")
         print(f"\n{C_BOLD}{BRIGHT_WHITE}AI SUBCOMMANDS:{C_RESET}")
@@ -4246,7 +4244,7 @@ def cli_ai(action="menu", *args):
             f"  {NEON_YELLOW}sentinel ai advise   {C_RESET} {TEXT_MUTED}Run Autonomous System Optimization Plan{C_RESET}"
         )
         print(
-            f"  {NEON_YELLOW}sentinel ai \"query\"  {C_RESET} {TEXT_MUTED}Ask AI Agent with System Telemetry{C_RESET}\n"
+            f'  {NEON_YELLOW}sentinel ai "query"  {C_RESET} {TEXT_MUTED}Ask AI Agent with System Telemetry{C_RESET}\n'
         )
 
 

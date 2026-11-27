@@ -284,4 +284,3 @@ def test_cli_ai_entrypoint(capsys):
     Termux_Sentinel.cli_ai("status")
     out = capsys.readouterr().out
     assert "AGENTIC AI STATUS" in out
-
