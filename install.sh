@@ -97,6 +97,14 @@ if [ "$IS_TERMUX" = true ]; then
 		chmod 755 "$HOME_DIR/.shortcuts/Termux-Sentinel"
 		echo " ✓ Installed Termux:Widget Shortcut: ~/.shortcuts/Termux-Sentinel"
 	fi
+	if [ -f "$SOURCE_DIR/Terminal-Sentinal" ]; then
+		cp -vf "$SOURCE_DIR/Terminal-Sentinal" "$HOME_DIR/.shortcuts/Terminal-Sentinal"
+		chmod 755 "$HOME_DIR/.shortcuts/Terminal-Sentinal"
+		if [ -d "$HOME_DIR/.shortcuts/icons" ] && [ -f "$HOME_DIR/.shortcuts/icons/Sentinel.png" ]; then
+			cp -vf "$HOME_DIR/.shortcuts/icons/Sentinel.png" "$HOME_DIR/.shortcuts/icons/Terminal-Sentinal.png" 2>/dev/null || true
+		fi
+		echo " ✓ Installed Termux:Widget Shortcut: ~/.shortcuts/Terminal-Sentinal"
+	fi
 	ln -sf "$SOURCE_DIR/Termux_Sentinel.py" "$HOME_DIR/Termux_Sentinel.py" 2>/dev/null || true
 else
 	# Ensure ~/.local/bin is in PATH for Ubuntu/Debian non-root users
