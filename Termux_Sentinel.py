@@ -1753,7 +1753,9 @@ def render_vault_view(vault_items):
 # ==============================================================================
 def check_core_prerequisites() -> dict:
     """Audits core runtime (Python - Mandatory) and companion tools (Rclone, Ollama - Optional)."""
-    py_ver = f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
+    py_ver = (
+        f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
+    )
     py_ok = sys.version_info >= (3, 9)
 
     rclone_path = shutil.which("rclone")
@@ -1870,21 +1872,27 @@ def install_optional_dependency(dep_name: str) -> bool:
             if shutil.which("apt-get"):
                 sudo_prefix = (
                     ["sudo"]
-                    if hasattr(os, "geteuid") and os.geteuid() != 0 and shutil.which("sudo")
+                    if hasattr(os, "geteuid")
+                    and os.geteuid() != 0
+                    and shutil.which("sudo")
                     else []
                 )
                 cmd = sudo_prefix + ["apt-get", "install", "-y", "rclone"]
             elif shutil.which("dnf"):
                 sudo_prefix = (
                     ["sudo"]
-                    if hasattr(os, "geteuid") and os.geteuid() != 0 and shutil.which("sudo")
+                    if hasattr(os, "geteuid")
+                    and os.geteuid() != 0
+                    and shutil.which("sudo")
                     else []
                 )
                 cmd = sudo_prefix + ["dnf", "install", "-y", "rclone"]
             elif shutil.which("pacman"):
                 sudo_prefix = (
                     ["sudo"]
-                    if hasattr(os, "geteuid") and os.geteuid() != 0 and shutil.which("sudo")
+                    if hasattr(os, "geteuid")
+                    and os.geteuid() != 0
+                    and shutil.which("sudo")
                     else []
                 )
                 cmd = sudo_prefix + ["pacman", "-S", "--noconfirm", "rclone"]
@@ -1905,7 +1913,9 @@ def install_optional_dependency(dep_name: str) -> bool:
         time.sleep(1.0)
         found = bool(shutil.which(dep_name))
         if found:
-            print(f"\n{NEON_GREEN}✓ Successfully installed {dep_name.upper()}!{C_RESET}")
+            print(
+                f"\n{NEON_GREEN}✓ Successfully installed {dep_name.upper()}!{C_RESET}"
+            )
             return True
         else:
             if res.returncode == 0:
@@ -1981,7 +1991,9 @@ def cli_prerequisites(interactive=False):
             f"  {NEON_YELLOW}[r]{C_RESET} Install Rclone (for Google Drive cloud sync & offloading)"
         )
     if "ollama" in missing_optionals:
-        print(f"  {NEON_YELLOW}[o]{C_RESET} Install Ollama (for offline local AI models)")
+        print(
+            f"  {NEON_YELLOW}[o]{C_RESET} Install Ollama (for offline local AI models)"
+        )
     print(f"  {TEXT_MUTED}[Enter / q] Skip & Continue with Sentinel{C_RESET}")
 
     try:
@@ -1995,7 +2007,9 @@ def cli_prerequisites(interactive=False):
         elif ch == "o" and "ollama" in missing_optionals:
             install_optional_dependency("ollama")
         else:
-            print(f"  {TEXT_MUTED}Continuing without installing optional tools.{C_RESET}")
+            print(
+                f"  {TEXT_MUTED}Continuing without installing optional tools.{C_RESET}"
+            )
     except (KeyboardInterrupt, EOFError):
         return
 
