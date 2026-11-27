@@ -44,20 +44,34 @@ Specifically calibrated for mobile portrait displays ($\le 44$ columns with **Sh
 
 ## 🚀 Quick Start & Installation
 
-### One-Tap Installation
-Open Termux and execute:
+### Cross-Platform Installation
+
+#### 🤖 Android Termux:
 ```bash
 git clone https://github.com/motherskitchenblr2/TERMUX-SENTINEL.git
 cd TERMUX-SENTINEL
-bash install_or_restore.sh
+bash install.sh
 ```
 
-This will automatically:
-1. Install `Termux_Sentinel.py` to `$HOME/Termux_Sentinel.py`.
-2. Register global CLI binaries `sentinel` and `termux-sentinel` into `$PREFIX/bin`.
-3. Set up the Preservation Vault in `~/.config/termux_sentinel/vault.json`.
-4. Install one-tap home screen shortcuts for **Termux:Widget** in `~/.shortcuts/`.
-5. Configure cloud migration scripts with wake-lock support.
+#### 🐧 Ubuntu / Debian / Linux Desktop & Server:
+```bash
+git clone https://github.com/motherskitchenblr2/TERMUX-SENTINEL.git
+cd TERMUX-SENTINEL
+bash install.sh
+```
+
+#### 🪟 Windows (Command Prompt & PowerShell 5.1/7+):
+Open PowerShell (as Administrator or standard user) and run:
+```powershell
+git clone https://github.com/motherskitchenblr2/TERMUX-SENTINEL.git
+cd TERMUX-SENTINEL
+powershell -ExecutionPolicy Bypass -File .\install.ps1
+```
+Or install via Python standard packaging:
+```cmd
+pip install -e .
+```
+This automatically registers `sentinel` and `termux-sentinel` globally in your terminal!
 
 ---
 
@@ -95,7 +109,27 @@ sentinel bots kill <p> # Terminate process by PID with animated confirmation
 # ☁️ Cloud Sync & System Updates
 sentinel cloud         # View live Rclone Google Drive backup stream
 sentinel cloud -s      # Start background cloud migration daemon
+sentinel offload <dir> # Move heavy directory to Google Drive & reclaim local space
 sentinel update        # Upgrade pkg, apt, pip, and global npm packages
+
+# 🔍 Bloat Hunter & Automated Maintenance
+sentinel hunt          # Deep scan directories eating >100 MB (npm, venv, cache)
+sentinel hunt 500      # Custom threshold bloat hunt (e.g. >500 MB)
+sentinel auto-clean    # Headless cron/widget auto-pruner with audit logging
+
+# 🩺 Health Check & System Repair
+sentinel doctor        # Diagnostic scan for broken packages, stale locks & dangling links
+sentinel repair        # Auto-heal broken dependencies, unconfigured dpkg, and clear corrupt caches
+sentinel heal          # Audit and self-heal Sentinel configs, permissions, and vault integrity
+
+# 🤖 Agentic AI & Hardware Capacity Inspector
+sentinel ai            # View Agentic AI Status & Active Model
+sentinel ai inspect    # Hardware Capacity Audit & Offline Ollama Advisor
+sentinel ai setup      # Connect AI Providers (OpenCode/TokenHarbor/Gemini/Groq/Ollama)
+sentinel ai toggle     # Toggle between Autonomous Agentic AI & Manual Mode
+sentinel ai advise     # Autonomous AI system analysis & 3-step action plan
+sentinel ai "<prompt>" # One-shot AI query with live Termux system telemetry
+sentinel prereqs       # Auto-check Python (required), Rclone & Ollama (optional)
 sentinel help          # Display full CLI manual
 ```
 
@@ -113,6 +147,11 @@ When running `sentinel` without arguments, navigate using single keystrokes:
 | **`[v]`** | **Preservation Vault** | View and manage shielded directories and patterns |
 | **`[m]`** | **Apps Manager** | Inspect and uninstall developer tools and agentic CLIs |
 | **`[s]`** | **Bot Detective** | Audit rogue scripts and terminate silent daemons |
+| **`[d]`** | **Doctor & Heal** | Diagnose and repair broken packages, corrupt caches & stale locks |
+| **`[g]`** | **Toggle AI Agent** | Switch between Autonomous Agentic AI and Manual Mode |
+| **`[x]`** | **AI Advisor** | Run AI system telemetry analysis & optimization plan |
+| **`[o]`** | **Ollama Inspector** | Hardware capacity audit & offline small model puller |
+| **`[k]`** | **AI Providers** | Connect & live-sync AI providers (Token Harbor, Groq, Gemini) |
 | **`[a]`** | **Select All Safe** | Quickly check all recommended safe-to-delete caches |
 | **`[n]`** | **Deselect All** | Clear all active checkboxes |
 | **`[u]`** | **System Updates** | Toggle automated package upgrades (`pkg`, `apt`, `npm`, `pip`) |
@@ -150,11 +189,13 @@ Termux-Sentinel includes optimized parallel migration scripts to offload tens of
 
 ---
 
-## 📱 Multi-Device Support
+## 📱 Multi-Platform & Wide-Screen Support
 
-Termux-Sentinel is designed to run seamlessly across Android mobile workstations and terminal environments:
-- **Primary Workstation:** Android Termux Environment (ARM64 / AArch64)
-- **Secondary Node:** Ubuntu PRoot-Distro Container
+Termux-Sentinel is designed to run seamlessly across Android mobile workstations, Linux servers, and Windows desktop terminals:
+- **Android Termux:** ARM64 portrait mode with mobile-clamped 44-col HUD.
+- **Ubuntu / Debian Linux:** Server & desktop terminals with full multi-column layout.
+- **Windows 10 / 11:** Native Command Prompt and PowerShell support with Windows Terminal ANSI colors.
+- **Responsive Wide-Screen TUI:** Automatically expands into a dual-pane Cyber Grid on displays $\ge 80$ columns, showing system storage on the left and vault status on the right.
 
 ---
 
@@ -162,15 +203,17 @@ Termux-Sentinel is designed to run seamlessly across Android mobile workstations
 
 ```text
 TERMUX-SENTINEL/
-├── Termux_Sentinel.py                  # Core Sentinel Engine (TUI + CLI)
-├── install_or_restore.sh               # One-tap installer and environment restorer
+├── Termux_Sentinel.py                  # Core Sentinel Engine (Zero-dependency TUI + CLI)
+├── install.sh                          # Universal installer for Termux, Ubuntu & Linux
+├── install.ps1                         # One-click PowerShell installer for Windows
+├── install_or_restore.sh               # Legacy Termux restore script
 ├── vault.json                          # Default Preservation Vault configuration
-├── Termux_Sentinel.sh                  # Termux Widget one-tap launcher
-├── 3_Termux_Sentinel.sh                # Numbered widget shortcut with wake-lock
-├── Backup_to_Drive.sh                  # Dedicated documents & storage backup script
-├── migrate_to_realme_bkp.sh            # High-efficiency cloud migration script
-├── migrate_to_cmf_bkp.sh               # Device cloud migration script
+├── Termux-Sentinel                     # Termux Widget one-tap launcher with wake-lock
+├── migrate_to_cmf_bkp.sh               # Device cloud migration script (Rclone)
+├── setup_gdrive_credentials.py         # Google OAuth & token refresher helper
 ├── rclone.conf.template                # Sanitized Google Drive rclone template
+├── pyproject.toml                      # Zero-dependency packaging specification
+├── requirements.txt                    # Pure standard library specification
 ├── LICENSE                             # Apache 2.0 License
 └── README.md                           # Master Documentation & Manual
 ```

@@ -29,23 +29,14 @@ classifiers = [
     "Topic :: System :: Systems Administration",
     "Topic :: Utilities"
 ]
-dependencies = [
-    "rich>=13.7,<16",
-    "prompt_toolkit>=3.0,<4",
-    "psutil>=5.9,<8",
-    "pyyaml>=6.0,<7"
-]
+dependencies = []
 
 [project.optional-dependencies]
 dev = [
     "pytest>=8.0",
     "ruff>=0.3",
-    "black>=24.2",
     "mypy>=1.8",
-    "bandit>=1.7",
-    "types-PyYAML>=6.0",
-    "types-psutil>=5.9",
-    "pip-tools>=7.3"
+    "bandit>=1.7"
 ]
 
 [project.scripts]
@@ -57,17 +48,13 @@ py-modules = ["Termux_Sentinel"]
 
 [tool.pytest.ini_options]
 minversion = "8.0"
-addopts = "-ra -q --ignore=docs/archive"
+addopts = "-ra -q"
 testpaths = ["tests"]
 python_files = ["test_*.py"]
 
 [tool.ruff]
 line-length = 100
 target-version = "py39"
-
-[tool.black]
-line-length = 100
-target-version = ['py39', 'py310', 'py311', 'py312']
 
 [tool.mypy]
 python_version = "3.9"
@@ -76,5 +63,5 @@ warn_unused_configs = true
 ignore_missing_imports = true
 
 [tool.bandit]
-exclude_dirs = ["tests", "docs/archive"]
+exclude_dirs = ["tests"]
 skips = ["B101"]

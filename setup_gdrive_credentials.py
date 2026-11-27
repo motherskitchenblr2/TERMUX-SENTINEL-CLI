@@ -29,10 +29,12 @@ def find_client_secret(custom_path=None):
             try:
                 with open(file_path, encoding="utf-8") as f:
                     data = json.load(f)
-                    if "installed" in data or "web" in data or "client_id" in data:
-                        return file_path
-            except Exception:
-                continue
+            except (OSError, json.JSONDecodeError, UnicodeDecodeError):
+                data = None
+            if isinstance(data, dict) and (
+                "installed" in data or "web" in data or "client_id" in data
+            ):
+                return file_path
     return None
 
 
@@ -41,11 +43,15 @@ def main():
     secret_file = find_client_secret(target_file)
 
     if not secret_file:
-        print("[!] No valid client_secret.json found in ~ or /storage/emulated/0/Download/")
-        print("    Usage: python3 setup_gdrive_credentials.py [/path/to/client_secret.json]")
+        print(
+            "[!] No valid client_secret.json found in ~ or /storage/emulated/0/Download/"
+        )
+        print(
+            "    Usage: python3 setup_gdrive_credentials.py [/path/to/client_secret.json]"
+        )
         sys.exit(1)
 
-    print(f"[*] Found credentials file: {secret_file}")
+    print("[*] Found valid credentials file.")
 
     with open(secret_file, encoding="utf-8") as f:
         data = json.load(f)
@@ -81,7 +87,9 @@ def main():
     print(
         "[✓] Successfully updated ~/.config/rclone/rclone.conf with your OAuth Client credentials!"
     )
-    print("\n[NEXT STEP] Run the following command in Termux to authorize with Google Drive:")
+    print(
+        "\n[NEXT STEP] Run the following command in Termux to authorize with Google Drive:"
+    )
     print("    rclone config reconnect gdrive:\n")
 
 

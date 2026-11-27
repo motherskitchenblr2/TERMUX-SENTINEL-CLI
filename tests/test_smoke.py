@@ -5,6 +5,7 @@
 import json
 from pathlib import Path
 
+import setup_gdrive_credentials
 import Termux_Sentinel
 
 
@@ -53,6 +54,270 @@ def test_vault_protection_logic():
     """Verify that is_protected identifies protected patterns."""
     assert callable(Termux_Sentinel.is_protected)
     # A path containing Important_Documents should match the default vault rule
-    assert Termux_Sentinel.is_protected("/storage/emulated/0/Important_Documents/Notes") is True
+    assert (
+        Termux_Sentinel.is_protected("/storage/emulated/0/Important_Documents/Notes")
+        is True
+    )
     # An ephemeral cache path should NOT be protected
-    assert Termux_Sentinel.is_protected("/data/data/com.termux/files/home/.cache/tmp_junk") is False
+    assert (
+        Termux_Sentinel.is_protected("/data/data/com.termux/files/home/.cache/tmp_junk")
+        is False
+    )
+
+
+def test_gdrive_setup_does_not_log_credentials_path(tmp_path, monkeypatch, capsys):
+    """The setup script must not print the credential file path."""
+    credentials_path = tmp_path / "client_secret.json"
+    credentials_path.write_text(
+        json.dumps(
+            {
+                "installed": {
+                    "client_id": "test-client-id",
+                    "client_secret": "test-client-secret",
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    config_path = tmp_path / ".config" / "rclone" / "rclone.conf"
+    monkeypatch.setattr(setup_gdrive_credentials, "CONFIG_PATH", str(config_path))
+    monkeypatch.setattr(
+        setup_gdrive_credentials.sys,
+        "argv",
+        ["setup_gdrive_credentials.py", str(credentials_path)],
+    )
+
+    setup_gdrive_credentials.main()
+
+    output = capsys.readouterr().out
+    assert str(credentials_path) not in output
+
+
+def test_gdrive_setup_skips_invalid_json(tmp_path, monkeypatch):
+    """Credential discovery skips malformed files and continues searching."""
+    invalid_path = tmp_path / "invalid.json"
+    invalid_path.write_text("{not valid json", encoding="utf-8")
+    valid_path = tmp_path / "client_secret.json"
+    valid_path.write_text(
+        json.dumps({"installed": {"client_id": "test", "client_secret": "test"}}),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        setup_gdrive_credentials.os.path,
+        "expanduser",
+        lambda path: (
+            str(tmp_path)
+            if path == "~"
+            else str(tmp_path / path[2:]) if path.startswith("~/") else path
+        ),
+    )
+
+    assert setup_gdrive_credentials.find_client_secret() == str(valid_path)
+
+
+def test_storage_threshold_check():
+    """Verify storage threshold detector function."""
+    assert hasattr(Termux_Sentinel, "check_storage_threshold")
+    is_crit, free_gb = Termux_Sentinel.check_storage_threshold(min_gb=1.0)
+    assert isinstance(is_crit, bool)
+    assert isinstance(free_gb, float)
+
+
+def test_bloat_hunter_and_offload_entrypoints():
+    """Verify new CLI commands exist and are callable."""
+    assert hasattr(Termux_Sentinel, "cli_hunt")
+    assert hasattr(Termux_Sentinel, "cli_offload")
+    assert hasattr(Termux_Sentinel, "cli_autoclean")
+    assert callable(Termux_Sentinel.cli_hunt)
+    assert callable(Termux_Sentinel.cli_offload)
+    assert callable(Termux_Sentinel.cli_autoclean)
+
+
+def test_cross_platform_disk_usage():
+    """Verify cross-platform disk usage works and returns valid metrics."""
+    used, total, free, pct = Termux_Sentinel.get_disk_usage()
+    assert used != "N/A"
+    assert total != "N/A"
+    assert free != "N/A"
+    assert "%" in pct
+
+
+def test_wide_screen_columns_responsiveness(monkeypatch):
+    """Verify terminal width adapts dynamically up to 120 columns."""
+    # Simulated mobile portrait width
+    monkeypatch.setattr(
+        Termux_Sentinel.shutil,
+        "get_terminal_size",
+        lambda fallback: type("Size", (), {"columns": 40, "lines": 24})(),
+    )
+    assert Termux_Sentinel.get_term_cols() == 44  # Clamped to min 44
+
+    # Simulated wide desktop terminal
+    monkeypatch.setattr(
+        Termux_Sentinel.shutil,
+        "get_terminal_size",
+        lambda fallback: type("Size", (), {"columns": 100, "lines": 30})(),
+    )
+    assert Termux_Sentinel.get_term_cols() == 100
+
+
+def test_windows_simulation(monkeypatch):
+    """Verify Windows platform simulation logic."""
+    monkeypatch.setattr(Termux_Sentinel, "IS_WINDOWS", True)
+    name = Termux_Sentinel.get_device_name()
+    assert "WINDOWS" in name
+    # Verify kill_process_pid handles windows execution safely
+    res = Termux_Sentinel.kill_process_pid(999999)
+    assert isinstance(res, bool)
+
+
+def test_repair_and_doctor_diagnostics(capsys):
+    """Verify repair and doctor diagnostics run cleanly without error."""
+    assert hasattr(Termux_Sentinel, "cli_repair")
+    assert callable(Termux_Sentinel.cli_repair)
+    Termux_Sentinel.cli_repair(auto_fix=False)
+    out = capsys.readouterr().out
+    assert "DIAGNOSTIC" in out or "DIAGNOSTICS" in out
+
+
+def test_get_user_processes_cross_platform():
+    """Verify process scanning returns list of process tuples."""
+    assert hasattr(Termux_Sentinel, "get_user_processes")
+    procs = Termux_Sentinel.get_user_processes()
+    assert isinstance(procs, list)
+    if procs:
+        pid, cmd = procs[0]
+        assert isinstance(pid, int)
+        assert isinstance(cmd, str)
+
+
+def test_self_heal_sentinel(capsys):
+    """Verify self-healing runs without exception."""
+    assert hasattr(Termux_Sentinel, "self_heal_sentinel")
+    assert callable(Termux_Sentinel.self_heal_sentinel)
+    healed, issues = Termux_Sentinel.self_heal_sentinel(silent=True)
+    assert isinstance(healed, list)
+    assert isinstance(issues, list)
+
+
+def test_corrupted_vault_auto_recovery(tmp_path, monkeypatch):
+    """Verify that a corrupted or malformed vault.json auto-recovers gracefully."""
+    fake_vault = tmp_path / "vault.json"
+    fake_vault.write_text("{corrupt: json bad syntax", encoding="utf-8")
+    monkeypatch.setattr(Termux_Sentinel, "VAULT_FILE", str(fake_vault))
+    monkeypatch.setattr(Termux_Sentinel, "VAULT_DIR", str(tmp_path))
+
+    # load_vault should intercept corruption, back it up, and restore valid default vault
+    items = Termux_Sentinel.load_vault()
+    assert isinstance(items, list)
+    assert len(items) >= len(Termux_Sentinel.DEFAULT_VAULT_ITEMS)
+    # The file should now contain valid JSON
+    with open(fake_vault, encoding="utf-8") as f:
+        reloaded = json.load(f)
+    assert isinstance(reloaded, list)
+
+
+def test_atomic_save_vault(tmp_path, monkeypatch):
+    """Verify save_vault writes valid json atomically."""
+    test_vault = tmp_path / "vault.json"
+    monkeypatch.setattr(Termux_Sentinel, "VAULT_FILE", str(test_vault))
+    monkeypatch.setattr(Termux_Sentinel, "VAULT_DIR", str(tmp_path))
+
+    data = [{"id": 99, "name": "Atomic Test", "pattern": "Test", "locked": False}]
+    Termux_Sentinel.save_vault(data)
+    assert test_vault.exists()
+    with open(test_vault, encoding="utf-8") as f:
+        loaded = json.load(f)
+    assert loaded[0]["name"] == "Atomic Test"
+
+
+def test_inspect_device_hardware():
+    """Verify hardware inspector returns complete telemetry and recommendation tier."""
+    assert hasattr(Termux_Sentinel, "inspect_device_hardware")
+    info = Termux_Sentinel.inspect_device_hardware()
+    assert isinstance(info, dict)
+    for key in [
+        "cpu_cores",
+        "arch",
+        "ram_total_gb",
+        "disk_free_gb",
+        "tier_id",
+        "recommended_models",
+    ]:
+        assert key in info
+    assert len(info["recommended_models"]) > 0
+    assert "name" in info["recommended_models"][0]
+
+
+def test_ai_config_crud(tmp_path, monkeypatch):
+    """Verify loading, saving and toggling AI configuration."""
+    cfg_path = tmp_path / "ai_config.json"
+    monkeypatch.setattr(Termux_Sentinel, "AI_CONFIG_FILE", str(cfg_path))
+    monkeypatch.setattr(Termux_Sentinel, "VAULT_DIR", str(tmp_path))
+
+    cfg = Termux_Sentinel.load_ai_config()
+    assert isinstance(cfg, dict)
+    assert cfg.get("provider") == "ollama"
+
+    state1 = Termux_Sentinel.toggle_agentic_mode()
+    assert isinstance(state1, bool)
+    assert state1 is True
+    reloaded = Termux_Sentinel.load_ai_config()
+    assert reloaded["agentic_enabled"] is True
+
+    state2 = Termux_Sentinel.toggle_agentic_mode()
+    assert state2 is False
+
+
+def test_validate_and_sync_models_mock():
+    """Verify provider validation parser logic."""
+    assert hasattr(Termux_Sentinel, "validate_and_sync_models")
+    ok, err, models = Termux_Sentinel.validate_and_sync_models(
+        "invalid_provider", "bad_key"
+    )
+    assert ok is False
+
+
+def test_cli_ai_entrypoint(capsys):
+    """Verify cli_ai routes without crash."""
+    assert hasattr(Termux_Sentinel, "cli_ai")
+    Termux_Sentinel.cli_ai("status")
+    out = capsys.readouterr().out
+    assert "AGENTIC AI STATUS" in out
+
+
+def test_check_core_prerequisites():
+    """Verify check_core_prerequisites returns valid structure and properties."""
+    assert hasattr(Termux_Sentinel, "check_core_prerequisites")
+    assert callable(Termux_Sentinel.check_core_prerequisites)
+    prereqs = Termux_Sentinel.check_core_prerequisites()
+    assert isinstance(prereqs, dict)
+    for tool in ("python", "rclone", "ollama"):
+        assert tool in prereqs
+        assert "mandatory" in prereqs[tool]
+        assert "installed" in prereqs[tool]
+        assert "name" in prereqs[tool]
+        assert "role" in prereqs[tool]
+
+    assert prereqs["python"]["mandatory"] is True
+    assert prereqs["python"]["installed"] is True
+    assert prereqs["rclone"]["mandatory"] is False
+    assert prereqs["ollama"]["mandatory"] is False
+
+
+def test_install_optional_dependency():
+    """Verify install_optional_dependency validates input and rejects unknown tools."""
+    assert hasattr(Termux_Sentinel, "install_optional_dependency")
+    assert callable(Termux_Sentinel.install_optional_dependency)
+    res = Termux_Sentinel.install_optional_dependency("unknown_dep_tool")
+    assert res is False
+
+
+def test_cli_prerequisites_entrypoint(capsys):
+    """Verify cli_prerequisites runs non-interactively without error."""
+    assert hasattr(Termux_Sentinel, "cli_prerequisites")
+    assert callable(Termux_Sentinel.cli_prerequisites)
+    Termux_Sentinel.cli_prerequisites(interactive=False)
+    out = capsys.readouterr().out
+    assert "PREREQUISITES" in out
+    assert "Python" in out

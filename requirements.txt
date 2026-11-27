@@ -1,4 +1,2 @@
-rich>=13.7,<16
-prompt_toolkit>=3.0,<4
-psutil>=5.9,<8
-pyyaml>=6.0,<7
+# Termux Sentinel - 100% Python Standard Library
+# Zero external runtime dependencies required!
