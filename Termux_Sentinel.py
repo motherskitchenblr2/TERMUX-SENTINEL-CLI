@@ -23,8 +23,6 @@ import unicodedata
 # NEON GLOW & DARK CHARCOAL COLOR PALETTE (256-Color ANSI)
 # ==============================================================================
 BG_CHARCOAL = "\033[48;5;234m"
-BG_DARK = "\033[48;5;232m"
-BG_BLACK = "\033[40m"
 C_RESET = "\033[0m"
 C_BOLD = "\033[1m"
 C_DIM = "\033[2m"
@@ -259,15 +257,6 @@ COLOR_R = "\033[38;5;226;1m"  # Luminous Cyber Yellow
 COLOR_M = "\033[38;5;208;1m"  # Vibrant Neon Orange
 COLOR_U = "\033[38;5;48;1m"  # Cyber Emerald Green
 COLOR_X = "\033[38;5;141;1m"  # Royal Neon Purple
-
-BANNER_3D_LINES = [
-    r"   _____  ___  ___  __  __  _   _ __  __  ",
-    r"  |_   _|| __|| _ \|  \/  || | | |\ \/ /  ",
-    r"    | |  | _| |   /| |\/| || |_| | >  <   ",
-    r"    |_|  |___||_|_\|_|  |_| \___/ /_/\_\  ",
-    r" ──────────────────────────────────────── ",
-    r"   ░▒▓██████ S E N T I N E L ██████▓▒░    ",
-]
 
 
 def render_3d_banner(border_color=NEON_CYAN, title_color=None, colorful=True):

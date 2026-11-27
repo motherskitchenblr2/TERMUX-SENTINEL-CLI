@@ -22,8 +22,6 @@ find_src() {
 	local fname="$1"
 	if [ -f "$SOURCE_DIR/$fname" ]; then
 		echo "$SOURCE_DIR/$fname"
-	elif [ -f "$SOURCE_DIR/Python Script/$fname" ]; then
-		echo "$SOURCE_DIR/Python Script/$fname"
 	else
 		echo ""
 	fi
