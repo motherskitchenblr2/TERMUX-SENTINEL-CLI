@@ -189,4 +189,3 @@ def test_get_user_processes_cross_platform():
         pid, cmd = procs[0]
         assert isinstance(pid, int)
         assert isinstance(cmd, str)
-

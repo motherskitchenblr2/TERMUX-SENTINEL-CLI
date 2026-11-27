@@ -1140,7 +1140,9 @@ def get_user_processes():
                     if not raw:
                         continue
                     parts = [
-                        p.decode("utf-8", errors="ignore") for p in raw.split(b"\x00") if p
+                        p.decode("utf-8", errors="ignore")
+                        for p in raw.split(b"\x00")
+                        if p
                     ]
                     if parts:
                         procs.append((pid, " ".join(parts)))
@@ -1283,13 +1285,19 @@ def scan_running_daemons():
                 "claude",
             ]
         ):
-            if "termux_sentinel" in cmd_lower or "ps -" in cmd_lower or "tasklist" in cmd_lower:
+            if (
+                "termux_sentinel" in cmd_lower
+                or "ps -" in cmd_lower
+                or "tasklist" in cmd_lower
+            ):
                 continue
 
             parts = cmd.split()
             script_path = None
             for t in parts[1:]:
-                if t.endswith((".py", ".js", ".sh", ".ts", ".mjs")) and os.path.isfile(t):
+                if t.endswith((".py", ".js", ".sh", ".ts", ".mjs")) and os.path.isfile(
+                    t
+                ):
                     script_path = t
                     break
 
@@ -2232,7 +2240,9 @@ def main():
             show_rclone_status()
         elif choice == "d":
             cli_repair(auto_fix=True)
-            input(f"\n{C_BOLD}{BRIGHT_WHITE}Press Enter to return to Termux_Sentinel...{C_RESET}")
+            input(
+                f"\n{C_BOLD}{BRIGHT_WHITE}Press Enter to return to Termux_Sentinel...{C_RESET}"
+            )
         elif choice == "z":
             print(
                 f"\n{NEON_YELLOW}Sentinel paused. No background changes made.{C_RESET}"
@@ -2754,16 +2764,20 @@ def cli_autoclean():
 
 def cli_repair(auto_fix=True):
     """Diagnoses and repairs broken packages, corrupted dependency caches, dangling symlinks, and stale locks."""
-    cols = get_term_cols()
+    get_term_cols()
     print_large_header()
     mode_str = "AUTO-REPAIR & HEAL" if auto_fix else "DIAGNOSTIC DOCTOR"
-    print_section_h2(f"SENTINEL {mode_str}", color=NEON_GREEN if auto_fix else NEON_CYAN)
+    print_section_h2(
+        f"SENTINEL {mode_str}", color=NEON_GREEN if auto_fix else NEON_CYAN
+    )
 
     actions_taken = []
     issues_found = []
 
     # 1. Stale Process / App Locks
-    animate_safe("DIAGNOSTICS", "Checking lockfiles & process integrity...", duration=0.4)
+    animate_safe(
+        "DIAGNOSTICS", "Checking lockfiles & process integrity...", duration=0.4
+    )
     running_procs = get_user_processes()
     running_names = " ".join([p[1].lower() for p in running_procs])
 
@@ -2787,7 +2801,9 @@ def cli_repair(auto_fix=True):
         lock_file = os.path.join(git_dir, "index.lock")
         if os.path.exists(lock_file):
             if "git" not in running_names:
-                issues_found.append(f"Stale Git index lock in {os.path.basename(os.path.dirname(git_dir))}")
+                issues_found.append(
+                    f"Stale Git index lock in {os.path.basename(os.path.dirname(git_dir))}"
+                )
                 if auto_fix:
                     try:
                         os.remove(lock_file)
@@ -2817,27 +2833,41 @@ def cli_repair(auto_fix=True):
     stale_dpkg_locks = [p for p in dpkg_lock_paths if os.path.exists(p)]
     if stale_dpkg_locks:
         if not any(k in running_names for k in ("apt", "dpkg", "pkg")):
-            issues_found.append(f"{len(stale_dpkg_locks)} stale package manager lock(s) detected")
+            issues_found.append(
+                f"{len(stale_dpkg_locks)} stale package manager lock(s) detected"
+            )
             if auto_fix:
                 for lp in stale_dpkg_locks:
                     try:
                         os.remove(lp)
-                        actions_taken.append(f"Removed stale lock: {os.path.basename(lp)}")
+                        actions_taken.append(
+                            f"Removed stale lock: {os.path.basename(lp)}"
+                        )
                     except OSError:
                         pass
 
     # Check broken dpkg configuration / dependencies
-    if dpkg_bin and (prefix or (os.geteuid() == 0 if hasattr(os, "geteuid") else False)):
+    if dpkg_bin and (
+        prefix or (os.geteuid() == 0 if hasattr(os, "geteuid") else False)
+    ):
         try:
-            audit = subprocess.run([dpkg_bin, "--audit"], capture_output=True, text=True, check=False)
+            audit = subprocess.run(
+                [dpkg_bin, "--audit"], capture_output=True, text=True, check=False
+            )
             if audit.stdout.strip() or audit.returncode != 0:
                 issues_found.append("Unconfigured / interrupted dpkg packages")
                 if auto_fix:
-                    animate_safe("HEALING", "Configuring unconfigured dpkg packages...", duration=0.5)
+                    animate_safe(
+                        "HEALING",
+                        "Configuring unconfigured dpkg packages...",
+                        duration=0.5,
+                    )
                     subprocess.run([dpkg_bin, "--configure", "-a"], check=False)
                     if apt_bin:
                         subprocess.run([apt_bin, "install", "-f", "-y"], check=False)
-                    actions_taken.append("Executed dpkg --configure -a & apt-get -f install")
+                    actions_taken.append(
+                        "Executed dpkg --configure -a & apt-get -f install"
+                    )
         except Exception:
             pass
 
@@ -2845,10 +2875,12 @@ def cli_repair(auto_fix=True):
     bin_dirs = []
     if prefix:
         bin_dirs.append(os.path.join(prefix, "bin"))
-    bin_dirs.extend([
-        os.path.join(HOME_DIR, ".local", "bin"),
-        os.path.join(HOME_DIR, "bin"),
-    ])
+    bin_dirs.extend(
+        [
+            os.path.join(HOME_DIR, ".local", "bin"),
+            os.path.join(HOME_DIR, "bin"),
+        ]
+    )
 
     broken_symlinks = []
     for bdir in bin_dirs:
@@ -2869,7 +2901,9 @@ def cli_repair(auto_fix=True):
             for sl in broken_symlinks:
                 try:
                     os.unlink(sl)
-                    actions_taken.append(f"Pruned dangling symlink: {os.path.basename(sl)}")
+                    actions_taken.append(
+                        f"Pruned dangling symlink: {os.path.basename(sl)}"
+                    )
                 except OSError:
                     pass
 
@@ -2882,9 +2916,13 @@ def cli_repair(auto_fix=True):
             check=False,
         )
         if pip_check.returncode != 0:
-            broken_msgs = [line.strip() for line in pip_check.stdout.splitlines() if line.strip()]
+            broken_msgs = [
+                line.strip() for line in pip_check.stdout.splitlines() if line.strip()
+            ]
             if broken_msgs:
-                issues_found.append(f"Python dependency conflict: {broken_msgs[0][:40]}")
+                issues_found.append(
+                    f"Python dependency conflict: {broken_msgs[0][:40]}"
+                )
     except Exception:
         pass
 
@@ -2904,8 +2942,12 @@ def cli_repair(auto_fix=True):
     npm_bin = shutil.which("npm")
     if npm_bin and auto_fix:
         try:
-            animate_safe("HEALING", "Verifying and repairing npm cache...", duration=0.4)
-            subprocess.run([npm_bin, "cache", "verify"], capture_output=True, check=False)
+            animate_safe(
+                "HEALING", "Verifying and repairing npm cache...", duration=0.4
+            )
+            subprocess.run(
+                [npm_bin, "cache", "verify"], capture_output=True, check=False
+            )
             actions_taken.append("Verified and cleaned NPM cache integrity")
         except Exception:
             pass
@@ -2916,18 +2958,26 @@ def cli_repair(auto_fix=True):
         for iss in issues_found:
             print(f"  {NEON_YELLOW}⚠️  Detected:{C_RESET} {iss}")
     else:
-        print(f"  {NEON_GREEN}✓ No corrupted packages, stale locks, or broken symlinks detected.{C_RESET}")
+        print(
+            f"  {NEON_GREEN}✓ No corrupted packages, stale locks, or broken symlinks detected.{C_RESET}"
+        )
 
     if auto_fix:
         print(f"\n{C_BOLD}{BRIGHT_WHITE}REPAIRS APPLIED:{C_RESET}")
         if actions_taken:
             for act in actions_taken:
                 print(f"  {NEON_GREEN}✓ Healed:{C_RESET} {act}")
-            print(f"\n{NEON_GREEN}All repairs completed successfully! System dependencies healthy.{C_RESET}\n")
+            print(
+                f"\n{NEON_GREEN}All repairs completed successfully! System dependencies healthy.{C_RESET}\n"
+            )
         else:
-            print(f"  {TEXT_MUTED}No repairs needed. System is operating at peak health.{C_RESET}\n")
+            print(
+                f"  {TEXT_MUTED}No repairs needed. System is operating at peak health.{C_RESET}\n"
+            )
     else:
-        print(f"\n{TEXT_MUTED}Run '{NEON_GREEN}sentinel repair{TEXT_MUTED}' to automatically heal detected issues.{C_RESET}\n")
+        print(
+            f"\n{TEXT_MUTED}Run '{NEON_GREEN}sentinel repair{TEXT_MUTED}' to automatically heal detected issues.{C_RESET}\n"
+        )
 
 
 def cli_help():
