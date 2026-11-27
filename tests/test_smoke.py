@@ -229,4 +229,3 @@ def test_atomic_save_vault(tmp_path, monkeypatch):
     with open(test_vault, encoding="utf-8") as f:
         loaded = json.load(f)
     assert loaded[0]["name"] == "Atomic Test"
-

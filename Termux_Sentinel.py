@@ -2808,9 +2808,7 @@ def self_heal_sentinel(silent=False):
             if not isinstance(v_data, list):
                 raise ValueError("Vault root must be a list")
             patterns = {
-                it.get("pattern", "").lower()
-                for it in v_data
-                if isinstance(it, dict)
+                it.get("pattern", "").lower() for it in v_data if isinstance(it, dict)
             }
             missing_defaults = [
                 d for d in DEFAULT_VAULT_ITEMS if d["pattern"].lower() not in patterns
@@ -2821,9 +2819,7 @@ def self_heal_sentinel(silent=False):
                 )
                 v_data.extend(missing_defaults)
                 save_vault(v_data)
-                healed.append(
-                    f"Restored {len(missing_defaults)} core safety shield(s)"
-                )
+                healed.append(f"Restored {len(missing_defaults)} core safety shield(s)")
         except Exception as e:
             issues.append(f"Corrupted vault.json syntax ({e})")
             corrupt_bkp = VAULT_FILE + f".corrupt.{int(time.time())}"
@@ -2872,7 +2868,7 @@ def self_heal_sentinel(silent=False):
         if target_bin_dir:
             wrapper_path = os.path.join(target_bin_dir, "sentinel")
             try:
-                wrapper_content = f"#!/bin/sh\nexec {shlex.quote(sys.executable)} {shlex.quote(sentinel_py)} \"$@\"\n"
+                wrapper_content = f'#!/bin/sh\nexec {shlex.quote(sys.executable)} {shlex.quote(sentinel_py)} "$@"\n'
                 with open(wrapper_path, "w", encoding="utf-8") as f:
                     f.write(wrapper_content)
                 os.chmod(wrapper_path, 0o755)
