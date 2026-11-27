@@ -120,6 +120,7 @@ sentinel auto-clean    # Headless cron/widget auto-pruner with audit logging
 # 🩺 Health Check & System Repair
 sentinel doctor        # Diagnostic scan for broken packages, stale locks & dangling links
 sentinel repair        # Auto-heal broken dependencies, unconfigured dpkg, and clear corrupt caches
+sentinel heal          # Audit and self-heal Sentinel configs, permissions, and vault integrity
 sentinel help          # Display full CLI manual
 ```
 

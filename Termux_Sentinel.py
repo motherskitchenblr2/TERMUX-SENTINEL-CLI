@@ -17,6 +17,7 @@ import signal
 import subprocess  # nosec B404
 import sys
 import time
+import traceback
 import unicodedata
 
 # ==============================================================================
@@ -60,6 +61,7 @@ if IS_WINDOWS:
 else:
     VAULT_DIR = os.path.join(HOME_DIR, ".config", "termux_sentinel")
 VAULT_FILE = os.path.join(VAULT_DIR, "vault.json")
+CRASH_LOG_FILE = os.path.join(VAULT_DIR, "crash.log")
 UBUNTU_ROOT = (
     "/data/data/com.termux/files/usr/var/lib/proot-distro/containers/ubuntu/rootfs"
     if IS_TERMUX
@@ -150,17 +152,28 @@ DEFAULT_VAULT_ITEMS = [
 # PRESERVATION VAULT STORAGE & LOGIC ENGINE
 # ==============================================================================
 def load_vault():
-    """Loads preserved items from vault.json, auto-seeding defaults if needed."""
+    """Loads preserved items from vault.json, auto-seeding defaults if needed with self-healing recovery."""
     if not os.path.exists(VAULT_FILE):
         os.makedirs(VAULT_DIR, exist_ok=True)
-        save_vault(DEFAULT_VAULT_ITEMS)
-        return list(DEFAULT_VAULT_ITEMS)
+        local_template = os.path.join(
+            os.path.dirname(os.path.abspath(__file__)), "vault.json"
+        )
+        if os.path.exists(local_template) and local_template != VAULT_FILE:
+            try:
+                shutil.copy2(local_template, VAULT_FILE)
+            except Exception:
+                pass
+        if not os.path.exists(VAULT_FILE):
+            save_vault(DEFAULT_VAULT_ITEMS)
+            return list(DEFAULT_VAULT_ITEMS)
     try:
         with open(VAULT_FILE, encoding="utf-8") as vault_file:
             data = json.load(vault_file)
             if isinstance(data, list):
                 # Ensure core items are present
-                existing_patterns = {it.get("pattern", "").lower() for it in data}
+                existing_patterns = {
+                    it.get("pattern", "").lower() for it in data if isinstance(it, dict)
+                }
                 for def_item in DEFAULT_VAULT_ITEMS:
                     if def_item["pattern"].lower() not in existing_patterns:
                         data.append(def_item)
@@ -169,17 +182,32 @@ def load_vault():
                 return data["items"]
             return list(DEFAULT_VAULT_ITEMS)
     except Exception:
+        # Self-healing on corrupted JSON or I/O failure
+        try:
+            corrupt_bkp = VAULT_FILE + f".corrupt.{int(time.time())}"
+            shutil.copy2(VAULT_FILE, corrupt_bkp)
+        except Exception:
+            pass
+        save_vault(DEFAULT_VAULT_ITEMS)
         return list(DEFAULT_VAULT_ITEMS)
 
 
 def save_vault(items):
-    """Saves vault items safely to disk."""
+    """Saves vault items safely to disk using atomic rename to prevent corruption."""
     try:
         os.makedirs(VAULT_DIR, exist_ok=True)
-        with open(VAULT_FILE, "w", encoding="utf-8") as f:
+        tmp_file = VAULT_FILE + f".tmp.{os.getpid()}"
+        with open(tmp_file, "w", encoding="utf-8") as f:
             json.dump(items, f, indent=2)
-    except (OSError, ValueError):
-        pass
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp_file, VAULT_FILE)
+    except Exception:
+        try:
+            with open(VAULT_FILE, "w", encoding="utf-8") as f:
+                json.dump(items, f, indent=2)
+        except (OSError, ValueError):
+            pass
 
 
 def add_to_vault(name, pattern, item_type="User Shield"):
@@ -2762,6 +2790,222 @@ def cli_autoclean():
             pass
 
 
+def self_heal_sentinel(silent=False):
+    """Audits and self-heals Sentinel's own installation, vault integrity, permissions, PATH, and logs."""
+    issues = []
+    healed = []
+
+    # 1. Config directory & Vault JSON integrity
+    os.makedirs(VAULT_DIR, exist_ok=True)
+    if not os.path.exists(VAULT_FILE) or os.path.getsize(VAULT_FILE) == 0:
+        issues.append("Preservation Vault missing or empty")
+        save_vault(DEFAULT_VAULT_ITEMS)
+        healed.append("Generated fresh default Preservation Vault")
+    else:
+        try:
+            with open(VAULT_FILE, encoding="utf-8") as f:
+                v_data = json.load(f)
+            if not isinstance(v_data, list):
+                raise ValueError("Vault root must be a list")
+            patterns = {
+                it.get("pattern", "").lower()
+                for it in v_data
+                if isinstance(it, dict)
+            }
+            missing_defaults = [
+                d for d in DEFAULT_VAULT_ITEMS if d["pattern"].lower() not in patterns
+            ]
+            if missing_defaults:
+                issues.append(
+                    f"{len(missing_defaults)} core safety shield(s) missing from Vault"
+                )
+                v_data.extend(missing_defaults)
+                save_vault(v_data)
+                healed.append(
+                    f"Restored {len(missing_defaults)} core safety shield(s)"
+                )
+        except Exception as e:
+            issues.append(f"Corrupted vault.json syntax ({e})")
+            corrupt_bkp = VAULT_FILE + f".corrupt.{int(time.time())}"
+            try:
+                shutil.copy2(VAULT_FILE, corrupt_bkp)
+            except OSError:
+                pass
+            save_vault(DEFAULT_VAULT_ITEMS)
+            healed.append(
+                f"Recovered corrupt Vault from template (backup: {os.path.basename(corrupt_bkp)})"
+            )
+
+    # 2. File permissions on Sentinel scripts
+    sentinel_py = os.path.abspath(__file__)
+    sentinel_dir = os.path.dirname(sentinel_py)
+    if not IS_WINDOWS and hasattr(os, "access"):
+        try:
+            if not os.access(sentinel_py, os.X_OK):
+                issues.append("Termux_Sentinel.py lacks execute permission (+x)")
+                os.chmod(sentinel_py, 0o755)
+                healed.append("Restored execute permissions on Termux_Sentinel.py")
+            install_sh = os.path.join(sentinel_dir, "install.sh")
+            if os.path.exists(install_sh) and not os.access(install_sh, os.X_OK):
+                os.chmod(install_sh, 0o755)
+                healed.append("Restored execute permissions on install.sh")
+        except OSError:
+            pass
+
+    # 3. PATH Integration & CLI wrapper
+    sentinel_cmd = shutil.which("sentinel")
+    if not sentinel_cmd:
+        issues.append("'sentinel' executable not found in PATH")
+        target_bin_dir = None
+        prefix = os.environ.get("PREFIX", "")
+        if IS_TERMUX and prefix and os.path.isdir(os.path.join(prefix, "bin")):
+            target_bin_dir = os.path.join(prefix, "bin")
+        elif not IS_WINDOWS:
+            for cand in [
+                os.path.join(HOME_DIR, ".local", "bin"),
+                os.path.join(HOME_DIR, "bin"),
+            ]:
+                if os.path.isdir(cand):
+                    target_bin_dir = cand
+                    break
+
+        if target_bin_dir:
+            wrapper_path = os.path.join(target_bin_dir, "sentinel")
+            try:
+                wrapper_content = f"#!/bin/sh\nexec {shlex.quote(sys.executable)} {shlex.quote(sentinel_py)} \"$@\"\n"
+                with open(wrapper_path, "w", encoding="utf-8") as f:
+                    f.write(wrapper_content)
+                os.chmod(wrapper_path, 0o755)
+                healed.append(f"Created CLI wrapper at {wrapper_path}")
+            except OSError:
+                pass
+
+    # 4. Log rotation (Crash log and auto-clean log)
+    for log_path in [CRASH_LOG_FILE, os.path.join(VAULT_DIR, "sentinel_autoclean.log")]:
+        if os.path.exists(log_path):
+            try:
+                if os.path.getsize(log_path) > 1024 * 1024:  # > 1 MB
+                    issues.append(f"{os.path.basename(log_path)} exceeded 1MB limit")
+                    old_path = log_path + ".old"
+                    if os.path.exists(old_path):
+                        os.remove(old_path)
+                    os.rename(log_path, old_path)
+                    healed.append(f"Rotated bloated log {os.path.basename(log_path)}")
+            except OSError:
+                pass
+
+    # 5. Stale Sentinel lock recovery
+    rclone_lock = os.path.join(HOME_DIR, ".rclone_backup.lock")
+    if os.path.exists(rclone_lock):
+        running = " ".join([p[1].lower() for p in get_user_processes()])
+        if "rclone" not in running:
+            issues.append("Stale Sentinel cloud sync lock detected")
+            try:
+                os.remove(rclone_lock)
+                healed.append("Removed abandoned ~/.rclone_backup.lock")
+            except OSError:
+                pass
+
+    if not silent:
+        print_large_header()
+        print_section_h2("SENTINEL SELF-HEALING & RESCUE", color=NEON_GREEN)
+        print(f"\n{C_BOLD}{BRIGHT_WHITE}INTEGRITY DIAGNOSTICS:{C_RESET}")
+        if issues:
+            for iss in issues:
+                print(f"  {NEON_YELLOW}⚠️  Detected:{C_RESET} {iss}")
+        else:
+            print(
+                f"  {NEON_GREEN}✓ Sentinel components operating with 100% integrity.{C_RESET}"
+            )
+
+        print(f"\n{C_BOLD}{BRIGHT_WHITE}ACTIONS APPLIED:{C_RESET}")
+        if healed:
+            for act in healed:
+                print(f"  {NEON_GREEN}✓ Healed:{C_RESET} {act}")
+            print(
+                f"\n{NEON_GREEN}Self-healing finished! Sentinel restored to prime condition.{C_RESET}\n"
+            )
+        else:
+            print(
+                f"  {TEXT_MUTED}No repairs needed. All configs, permissions, and paths verified.{C_RESET}\n"
+            )
+
+    return healed, issues
+
+
+def install_self_healing_hooks():
+    """Installs resilient global uncaught exception hooks and signal handlers."""
+
+    def _sig_handler(sig, frame):
+        sys.stdout.write(f"\033[?25h{C_RESET}\n")
+        sys.stdout.flush()
+        rclone_lock = os.path.join(HOME_DIR, ".rclone_backup.lock")
+        if os.path.exists(rclone_lock):
+            try:
+                os.remove(rclone_lock)
+            except OSError:
+                pass
+        sys.exit(130 if sig == signal.SIGINT else 143)
+
+    try:
+        signal.signal(signal.SIGINT, _sig_handler)
+        if hasattr(signal, "SIGTERM"):
+            signal.signal(signal.SIGTERM, _sig_handler)
+    except (ValueError, OSError):
+        pass
+
+    def _excepthook(exc_type, exc_val, exc_tb):
+        if issubclass(exc_type, KeyboardInterrupt):
+            sys.stdout.write(
+                f"\n{NEON_YELLOW}Sentinel operation cancelled by user.{C_RESET}\n"
+            )
+            sys.stdout.flush()
+            sys.exit(130)
+
+        sys.stdout.write(f"\033[?25h{C_RESET}\n")
+        sys.stdout.flush()
+
+        os.makedirs(VAULT_DIR, exist_ok=True)
+        timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
+        tb_lines = "".join(traceback.format_exception(exc_type, exc_val, exc_tb))
+        log_entry = (
+            f"=== SENTINEL CRASH REPORT [{timestamp}] ===\n"
+            f"Platform: {sys.platform} | Termux: {IS_TERMUX} | Windows: {IS_WINDOWS}\n"
+            f"Command : {' '.join(sys.argv)}\n"
+            f"Exception: {exc_type.__name__}: {exc_val}\n"
+            f"Traceback:\n{tb_lines}\n"
+            f"{'='*60}\n\n"
+        )
+        try:
+            with open(CRASH_LOG_FILE, "a", encoding="utf-8") as f:
+                f.write(log_entry)
+        except OSError:
+            pass
+
+        print(f"\n{BADGE_RED} CRASH INTERCEPTED {C_RESET}")
+        print(
+            f" {NEON_RED}An unexpected runtime error occurred: {BRIGHT_WHITE}{exc_type.__name__}: {exc_val}{C_RESET}"
+        )
+        print(f" {TEXT_MUTED}Full crash report saved to: {CRASH_LOG_FILE}{C_RESET}")
+        print(f" {NEON_CYAN}Initiating automated self-healing rescue...{C_RESET}")
+
+        try:
+            healed, _ = self_heal_sentinel(silent=True)
+            if healed:
+                print(
+                    f" {NEON_GREEN}✓ Self-healed {len(healed)} component(s): {', '.join(healed[:3])}{C_RESET}"
+                )
+        except Exception:
+            pass
+
+        print(
+            f" {TEXT_MUTED}Run 'sentinel heal' to re-verify installation health.{C_RESET}\n"
+        )
+        sys.exit(1)
+
+    sys.excepthook = _excepthook
+
+
 def cli_repair(auto_fix=True):
     """Diagnoses and repairs broken packages, corrupted dependency caches, dangling symlinks, and stale locks."""
     get_term_cols()
@@ -2773,6 +3017,13 @@ def cli_repair(auto_fix=True):
 
     actions_taken = []
     issues_found = []
+
+    # 0. Sentinel Self-Healing & Internal Health Check
+    self_healed, self_issues = self_heal_sentinel(silent=True)
+    if self_issues:
+        issues_found.extend(self_issues)
+    if self_healed:
+        actions_taken.extend(self_healed)
 
     # 1. Stale Process / App Locks
     animate_safe(
@@ -3020,6 +3271,7 @@ def cli_help():
         ("sentinel auto-clean", "Headless Auto Prune"),
         ("sentinel doctor", "System Health Check"),
         ("sentinel repair", "Auto-Fix Broken Apps & Deps"),
+        ("sentinel heal", "Self-Healing & Rescue Engine"),
         ("sentinel help", "CLI Command Manual"),
     ]
 
@@ -3095,12 +3347,14 @@ def cli_entrypoint():
             cli_offload(target_path=target_path, remote_folder=remote_folder)
     elif cmd in ("auto-clean", "autoclean", "cron"):
         cli_autoclean()
-    elif cmd in ("repair", "fix", "heal"):
+    elif cmd in ("repair", "fix"):
         auto_fix = not any(a in ("--check", "--dry-run", "-d") for a in sys.argv[2:])
         cli_repair(auto_fix=auto_fix)
     elif cmd in ("doctor", "diagnose", "diag"):
         auto_fix = any(a in ("--fix", "-f", "-y") for a in sys.argv[2:])
         cli_repair(auto_fix=auto_fix)
+    elif cmd in ("heal", "self-heal", "selfheal", "rescue"):
+        self_heal_sentinel(silent=False)
     elif cmd in ("update", "upgrade"):
         cli_update()
     elif cmd in ("help", "-h", "--help"):
@@ -3111,6 +3365,8 @@ def cli_entrypoint():
             f"Run {NEON_CYAN}'sentinel help'{C_RESET} to view all available commands.\n"
         )
 
+
+install_self_healing_hooks()
 
 if __name__ == "__main__":
     cli_entrypoint()

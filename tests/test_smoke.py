@@ -189,3 +189,44 @@ def test_get_user_processes_cross_platform():
         pid, cmd = procs[0]
         assert isinstance(pid, int)
         assert isinstance(cmd, str)
+
+
+def test_self_heal_sentinel(capsys):
+    """Verify self-healing runs without exception."""
+    assert hasattr(Termux_Sentinel, "self_heal_sentinel")
+    assert callable(Termux_Sentinel.self_heal_sentinel)
+    healed, issues = Termux_Sentinel.self_heal_sentinel(silent=True)
+    assert isinstance(healed, list)
+    assert isinstance(issues, list)
+
+
+def test_corrupted_vault_auto_recovery(tmp_path, monkeypatch):
+    """Verify that a corrupted or malformed vault.json auto-recovers gracefully."""
+    fake_vault = tmp_path / "vault.json"
+    fake_vault.write_text("{corrupt: json bad syntax", encoding="utf-8")
+    monkeypatch.setattr(Termux_Sentinel, "VAULT_FILE", str(fake_vault))
+    monkeypatch.setattr(Termux_Sentinel, "VAULT_DIR", str(tmp_path))
+
+    # load_vault should intercept corruption, back it up, and restore valid default vault
+    items = Termux_Sentinel.load_vault()
+    assert isinstance(items, list)
+    assert len(items) >= len(Termux_Sentinel.DEFAULT_VAULT_ITEMS)
+    # The file should now contain valid JSON
+    with open(fake_vault, encoding="utf-8") as f:
+        reloaded = json.load(f)
+    assert isinstance(reloaded, list)
+
+
+def test_atomic_save_vault(tmp_path, monkeypatch):
+    """Verify save_vault writes valid json atomically."""
+    test_vault = tmp_path / "vault.json"
+    monkeypatch.setattr(Termux_Sentinel, "VAULT_FILE", str(test_vault))
+    monkeypatch.setattr(Termux_Sentinel, "VAULT_DIR", str(tmp_path))
+
+    data = [{"id": 99, "name": "Atomic Test", "pattern": "Test", "locked": False}]
+    Termux_Sentinel.save_vault(data)
+    assert test_vault.exists()
+    with open(test_vault, encoding="utf-8") as f:
+        loaded = json.load(f)
+    assert loaded[0]["name"] == "Atomic Test"
+
