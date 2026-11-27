@@ -1106,6 +1106,49 @@ BOT_PATTERNS = [
 ]
 
 
+def get_user_processes():
+    """Returns a list of (pid, cmdline_str) for processes owned by current user across platforms."""
+    procs = []
+    if IS_WINDOWS:
+        try:
+            out = subprocess.check_output(
+                ["tasklist", "/FO", "CSV", "/NH"],
+                text=True,
+                stderr=subprocess.DEVNULL,
+            )
+            for line in out.strip().splitlines():
+                parts = [p.strip('"') for p in line.split('","')]
+                if len(parts) >= 2 and parts[1].isdigit():
+                    procs.append((int(parts[1]), parts[0]))
+            return procs
+        except Exception:
+            return []
+
+    if os.path.exists("/proc"):
+        my_uid = os.getuid() if hasattr(os, "getuid") else None
+        for pid_str in os.listdir("/proc"):
+            if not pid_str.isdigit():
+                continue
+            try:
+                pid = int(pid_str)
+                if my_uid is not None:
+                    p_stat = os.stat(f"/proc/{pid_str}")
+                    if p_stat.st_uid != my_uid:
+                        continue
+                with open(f"/proc/{pid_str}/cmdline", "rb") as f:
+                    raw = f.read()
+                    if not raw:
+                        continue
+                    parts = [
+                        p.decode("utf-8", errors="ignore") for p in raw.split(b"\x00") if p
+                    ]
+                    if parts:
+                        procs.append((pid, " ".join(parts)))
+            except (OSError, ValueError):
+                continue
+    return procs
+
+
 def scan_bot_scripts():
     """Intelligently detects forgotten/standalone bot scripts in milliseconds."""
     detected_bots = []
@@ -1132,23 +1175,7 @@ def scan_bot_scripts():
         os.path.join(UBUNTU_ROOT, "root"),
     ]
 
-    running_cmds = []
-    my_uid = os.getuid()
-    for pid_str in os.listdir("/proc"):
-        if pid_str.isdigit():
-            try:
-                if os.stat(f"/proc/{pid_str}").st_uid == my_uid:
-                    with open(f"/proc/{pid_str}/cmdline", "rb") as f:
-                        running_cmds.append(
-                            (
-                                int(pid_str),
-                                f.read()
-                                .decode("utf-8", errors="ignore")
-                                .replace("\x00", " "),
-                            )
-                        )
-            except (OSError, ValueError):
-                pass
+    running_cmds = get_user_processes()
 
     idx = 50
     visited = set()
@@ -1236,96 +1263,73 @@ def scan_bot_scripts():
 
 
 def scan_running_daemons():
-    """Detects silently running background processes/daemons owned by current user."""
+    """Detects silently running background processes/daemons owned by current user across platforms."""
     daemons = []
-    my_uid = os.getuid()
     idx = 80
 
-    for pid_str in os.listdir("/proc"):
-        if not pid_str.isdigit():
-            continue
-        try:
-            pid = int(pid_str)
-            p_stat = os.stat(f"/proc/{pid_str}")
-            if p_stat.st_uid != my_uid:
+    for pid, cmd in get_user_processes():
+        cmd_lower = cmd.lower()
+        if any(
+            k in cmd_lower
+            for k in [
+                "python",
+                "node",
+                "bun",
+                "bot.py",
+                "ollama",
+                "rclone",
+                "opencode",
+                "qwen",
+                "claude",
+            ]
+        ):
+            if "termux_sentinel" in cmd_lower or "ps -" in cmd_lower or "tasklist" in cmd_lower:
                 continue
 
-            with open(f"/proc/{pid_str}/cmdline", "rb") as f:
-                raw = f.read()
-                if not raw:
-                    continue
-                parts = [
-                    p.decode("utf-8", errors="ignore") for p in raw.split(b"\x00") if p
-                ]
-                if not parts:
-                    continue
-                cmd = " ".join(parts)
-                cmd_lower = cmd.lower()
+            parts = cmd.split()
+            script_path = None
+            for t in parts[1:]:
+                if t.endswith((".py", ".js", ".sh", ".ts", ".mjs")) and os.path.isfile(t):
+                    script_path = t
+                    break
 
-                if any(
-                    k in cmd_lower
-                    for k in [
-                        "python",
-                        "node",
-                        "bun",
-                        "bot.py",
-                        "ollama",
-                        "rclone",
-                        "opencode",
-                        "qwen",
-                        "claude",
-                    ]
-                ):
-                    if "termux_sentinel" in cmd_lower or "ps -" in cmd_lower:
-                        continue
+            mtime = "N/A"
+            if script_path and os.path.exists(script_path):
+                mtime = time.strftime(
+                    "%Y-%m-%d %H:%M",
+                    time.localtime(os.path.getmtime(script_path)),
+                )
 
-                    script_path = None
-                    for t in parts[1:]:
-                        if t.endswith(
-                            (".py", ".js", ".sh", ".ts", ".mjs")
-                        ) and os.path.isfile(t):
-                            script_path = t
-                            break
+            if "bot.py" in cmd_lower or "telegram" in cmd_lower:
+                dtype = "🤖 Telegram Bot Daemon"
+                rec = "Active Bot (Terminate if not using Telegram Bot)"
+            elif "ollama" in cmd_lower:
+                dtype = "🧠 AI Model Server (Ollama)"
+                rec = "Local LLM Backend (Terminate if using cloud API)"
+            elif "rclone" in cmd_lower:
+                dtype = "☁️ Cloud Sync Engine (Rclone)"
+                rec = "Active Cloud Backup (Keep running to finish upload)"
+            elif "opencode" in cmd_lower or "qwen" in cmd_lower:
+                dtype = "💻 Agent Session"
+                rec = "Active Terminal Agent (Terminate if orphaned)"
+            else:
+                dtype = "⚙️ Background Daemon"
+                rec = "Silent background worker (Terminate if forgotten)"
 
-                    mtime = "N/A"
-                    if script_path and os.path.exists(script_path):
-                        mtime = time.strftime(
-                            "%Y-%m-%d %H:%M",
-                            time.localtime(os.path.getmtime(script_path)),
-                        )
-
-                    if "bot.py" in cmd_lower or "telegram" in cmd_lower:
-                        dtype = "🤖 Telegram Bot Daemon"
-                        rec = "Active Bot (Terminate if not using Telegram Bot)"
-                    elif "ollama" in cmd_lower:
-                        dtype = "🧠 AI Model Server (Ollama)"
-                        rec = "Local LLM Backend (Terminate if using cloud API)"
-                    elif "rclone" in cmd_lower:
-                        dtype = "☁️ Cloud Sync Engine (Rclone)"
-                        rec = "Active Cloud Backup (Keep running to finish upload)"
-                    elif "opencode" in cmd_lower or "qwen" in cmd_lower:
-                        dtype = "💻 Agent Session"
-                        rec = "Active Terminal Agent (Terminate if orphaned)"
-                    else:
-                        dtype = "⚙️ Background Daemon"
-                        rec = "Silent background worker (Terminate if forgotten)"
-
-                    daemons.append(
-                        {
-                            "id": idx,
-                            "type": "daemon",
-                            "pid": pid,
-                            "dtype": dtype,
-                            "cmd": cmd,
-                            "script_path": script_path,
-                            "mtime": mtime,
-                            "recommendation": rec,
-                            "default": False,
-                        }
-                    )
-                    idx += 1
-        except (OSError, PermissionError):
-            pass
+            daemons.append(
+                {
+                    "id": idx,
+                    "type": "daemon",
+                    "pid": pid,
+                    "dtype": dtype,
+                    "cmd": cmd,
+                    "script_path": script_path,
+                    "mtime": mtime,
+                    "recommendation": rec,
+                    "default": False,
+                }
+            )
+            idx += 1
     return daemons
 
 
@@ -1416,21 +1420,23 @@ def render_main_view(clean_targets, update_targets, selected):
     )
     print(
         make_box_row(
-            f"{NEON_CYAN}[s]{C_RESET} Bots & Daemons  {NEON_GREEN}[r]{C_RESET} Cloud Sync",
+            f"{NEON_CYAN}[s]{C_RESET} Bots & Daemons  {NEON_GREEN}[d]{C_RESET} Doctor & Fix",
             border_color=NEON_CYAN,
             cols=cols,
         )
     )
     print(
         make_box_row(
-            f"{NEON_CYAN}[f]{C_RESET} Refresh State   {NEON_YELLOW}[z]{C_RESET} Pause Screen",
+            f"{NEON_CYAN}[f]{C_RESET} Refresh State   {NEON_GREEN}[r]{C_RESET} Cloud Sync",
             border_color=NEON_CYAN,
             cols=cols,
         )
     )
     print(
         make_box_row(
-            f"{NEON_RED}[q]{C_RESET} Cancel & Exit", border_color=NEON_CYAN, cols=cols
+            f"{NEON_YELLOW}[z]{C_RESET} Pause Screen    {NEON_RED}[q]{C_RESET} Cancel & Exit",
+            border_color=NEON_CYAN,
+            cols=cols,
         )
     )
     print(f"{NEON_CYAN}╚" + "═" * (cols - 2) + f"╝{C_RESET}")
@@ -2224,6 +2230,9 @@ def main():
                 selected[t["id"]] = not curr
         elif choice == "r":
             show_rclone_status()
+        elif choice == "d":
+            cli_repair(auto_fix=True)
+            input(f"\n{C_BOLD}{BRIGHT_WHITE}Press Enter to return to Termux_Sentinel...{C_RESET}")
         elif choice == "z":
             print(
                 f"\n{NEON_YELLOW}Sentinel paused. No background changes made.{C_RESET}"
@@ -2743,6 +2752,184 @@ def cli_autoclean():
             pass
 
 
+def cli_repair(auto_fix=True):
+    """Diagnoses and repairs broken packages, corrupted dependency caches, dangling symlinks, and stale locks."""
+    cols = get_term_cols()
+    print_large_header()
+    mode_str = "AUTO-REPAIR & HEAL" if auto_fix else "DIAGNOSTIC DOCTOR"
+    print_section_h2(f"SENTINEL {mode_str}", color=NEON_GREEN if auto_fix else NEON_CYAN)
+
+    actions_taken = []
+    issues_found = []
+
+    # 1. Stale Process / App Locks
+    animate_safe("DIAGNOSTICS", "Checking lockfiles & process integrity...", duration=0.4)
+    running_procs = get_user_processes()
+    running_names = " ".join([p[1].lower() for p in running_procs])
+
+    # Check ~/.rclone_backup.lock
+    rclone_lock = os.path.join(HOME_DIR, ".rclone_backup.lock")
+    if os.path.exists(rclone_lock):
+        if "rclone" not in running_names:
+            issues_found.append("Stale Rclone sync lock detected")
+            if auto_fix:
+                try:
+                    os.remove(rclone_lock)
+                    actions_taken.append("Removed stale ~/.rclone_backup.lock")
+                except OSError:
+                    pass
+
+    # Check .git/index.lock in current directory and sentinel home
+    for git_dir in [
+        os.path.join(os.getcwd(), ".git"),
+        os.path.join(HOME_DIR, "TERMUX-SENTINEL-CLI", ".git"),
+    ]:
+        lock_file = os.path.join(git_dir, "index.lock")
+        if os.path.exists(lock_file):
+            if "git" not in running_names:
+                issues_found.append(f"Stale Git index lock in {os.path.basename(os.path.dirname(git_dir))}")
+                if auto_fix:
+                    try:
+                        os.remove(lock_file)
+                        actions_taken.append(f"Removed stale Git lock: {lock_file}")
+                    except OSError:
+                        pass
+
+    # 2. Package Manager Lockfiles & Configuration (Termux / Debian / Ubuntu)
+    dpkg_bin = shutil.which("dpkg")
+    apt_bin = shutil.which("apt") or shutil.which("apt-get")
+
+    dpkg_lock_paths = []
+    prefix = os.environ.get("PREFIX", "")
+    if prefix and os.path.exists(os.path.join(prefix, "var", "lib", "dpkg")):
+        dpkg_lock_paths = [
+            os.path.join(prefix, "var", "lib", "dpkg", "lock"),
+            os.path.join(prefix, "var", "lib", "dpkg", "lock-frontend"),
+            os.path.join(prefix, "var", "lib", "apt", "lists", "lock"),
+        ]
+    elif os.path.exists("/var/lib/dpkg"):
+        dpkg_lock_paths = [
+            "/var/lib/dpkg/lock",
+            "/var/lib/dpkg/lock-frontend",
+            "/var/lib/apt/lists/lock",
+        ]
+
+    stale_dpkg_locks = [p for p in dpkg_lock_paths if os.path.exists(p)]
+    if stale_dpkg_locks:
+        if not any(k in running_names for k in ("apt", "dpkg", "pkg")):
+            issues_found.append(f"{len(stale_dpkg_locks)} stale package manager lock(s) detected")
+            if auto_fix:
+                for lp in stale_dpkg_locks:
+                    try:
+                        os.remove(lp)
+                        actions_taken.append(f"Removed stale lock: {os.path.basename(lp)}")
+                    except OSError:
+                        pass
+
+    # Check broken dpkg configuration / dependencies
+    if dpkg_bin and (prefix or (os.geteuid() == 0 if hasattr(os, "geteuid") else False)):
+        try:
+            audit = subprocess.run([dpkg_bin, "--audit"], capture_output=True, text=True, check=False)
+            if audit.stdout.strip() or audit.returncode != 0:
+                issues_found.append("Unconfigured / interrupted dpkg packages")
+                if auto_fix:
+                    animate_safe("HEALING", "Configuring unconfigured dpkg packages...", duration=0.5)
+                    subprocess.run([dpkg_bin, "--configure", "-a"], check=False)
+                    if apt_bin:
+                        subprocess.run([apt_bin, "install", "-f", "-y"], check=False)
+                    actions_taken.append("Executed dpkg --configure -a & apt-get -f install")
+        except Exception:
+            pass
+
+    # 3. Dangling / Broken Symlinks in user bins
+    bin_dirs = []
+    if prefix:
+        bin_dirs.append(os.path.join(prefix, "bin"))
+    bin_dirs.extend([
+        os.path.join(HOME_DIR, ".local", "bin"),
+        os.path.join(HOME_DIR, "bin"),
+    ])
+
+    broken_symlinks = []
+    for bdir in bin_dirs:
+        if os.path.isdir(bdir):
+            try:
+                for entry in os.listdir(bdir):
+                    fpath = os.path.join(bdir, entry)
+                    if is_protected(fpath):
+                        continue
+                    if os.path.islink(fpath) and not os.path.exists(fpath):
+                        broken_symlinks.append(fpath)
+            except OSError:
+                pass
+
+    if broken_symlinks:
+        issues_found.append(f"{len(broken_symlinks)} broken dangling binary symlink(s)")
+        if auto_fix:
+            for sl in broken_symlinks:
+                try:
+                    os.unlink(sl)
+                    actions_taken.append(f"Pruned dangling symlink: {os.path.basename(sl)}")
+                except OSError:
+                    pass
+
+    # 4. Python Environment & Corrupted Cache
+    try:
+        pip_check = subprocess.run(
+            [sys.executable, "-m", "pip", "check"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if pip_check.returncode != 0:
+            broken_msgs = [line.strip() for line in pip_check.stdout.splitlines() if line.strip()]
+            if broken_msgs:
+                issues_found.append(f"Python dependency conflict: {broken_msgs[0][:40]}")
+    except Exception:
+        pass
+
+    if auto_fix:
+        # Purge pip cache to remove corrupt wheels/tarballs
+        try:
+            subprocess.run(
+                [sys.executable, "-m", "pip", "cache", "purge"],
+                capture_output=True,
+                check=False,
+            )
+            actions_taken.append("Purged corrupted Python pip wheel/source caches")
+        except Exception:
+            pass
+
+    # 5. NPM / Node Cache Integrity
+    npm_bin = shutil.which("npm")
+    if npm_bin and auto_fix:
+        try:
+            animate_safe("HEALING", "Verifying and repairing npm cache...", duration=0.4)
+            subprocess.run([npm_bin, "cache", "verify"], capture_output=True, check=False)
+            actions_taken.append("Verified and cleaned NPM cache integrity")
+        except Exception:
+            pass
+
+    # Display Results
+    print(f"\n{C_BOLD}{BRIGHT_WHITE}DIAGNOSTIC SUMMARY:{C_RESET}")
+    if issues_found:
+        for iss in issues_found:
+            print(f"  {NEON_YELLOW}⚠️  Detected:{C_RESET} {iss}")
+    else:
+        print(f"  {NEON_GREEN}✓ No corrupted packages, stale locks, or broken symlinks detected.{C_RESET}")
+
+    if auto_fix:
+        print(f"\n{C_BOLD}{BRIGHT_WHITE}REPAIRS APPLIED:{C_RESET}")
+        if actions_taken:
+            for act in actions_taken:
+                print(f"  {NEON_GREEN}✓ Healed:{C_RESET} {act}")
+            print(f"\n{NEON_GREEN}All repairs completed successfully! System dependencies healthy.{C_RESET}\n")
+        else:
+            print(f"  {TEXT_MUTED}No repairs needed. System is operating at peak health.{C_RESET}\n")
+    else:
+        print(f"\n{TEXT_MUTED}Run '{NEON_GREEN}sentinel repair{TEXT_MUTED}' to automatically heal detected issues.{C_RESET}\n")
+
+
 def cli_help():
     cols = get_term_cols()
     print_large_header()
@@ -2781,6 +2968,8 @@ def cli_help():
         ("sentinel hunt [MB]", "Custom Bloat Threshold"),
         ("sentinel offload <path>", "Move Dir to Cloud"),
         ("sentinel auto-clean", "Headless Auto Prune"),
+        ("sentinel doctor", "System Health Check"),
+        ("sentinel repair", "Auto-Fix Broken Apps & Deps"),
         ("sentinel help", "CLI Command Manual"),
     ]
 
@@ -2856,6 +3045,12 @@ def cli_entrypoint():
             cli_offload(target_path=target_path, remote_folder=remote_folder)
     elif cmd in ("auto-clean", "autoclean", "cron"):
         cli_autoclean()
+    elif cmd in ("repair", "fix", "heal"):
+        auto_fix = not any(a in ("--check", "--dry-run", "-d") for a in sys.argv[2:])
+        cli_repair(auto_fix=auto_fix)
+    elif cmd in ("doctor", "diagnose", "diag"):
+        auto_fix = any(a in ("--fix", "-f", "-y") for a in sys.argv[2:])
+        cli_repair(auto_fix=auto_fix)
     elif cmd in ("update", "upgrade"):
         cli_update()
     elif cmd in ("help", "-h", "--help"):

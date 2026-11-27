@@ -116,6 +116,10 @@ sentinel update        # Upgrade pkg, apt, pip, and global npm packages
 sentinel hunt          # Deep scan directories eating >100 MB (npm, venv, cache)
 sentinel hunt 500      # Custom threshold bloat hunt (e.g. >500 MB)
 sentinel auto-clean    # Headless cron/widget auto-pruner with audit logging
+
+# 🩺 Health Check & System Repair
+sentinel doctor        # Diagnostic scan for broken packages, stale locks & dangling links
+sentinel repair        # Auto-heal broken dependencies, unconfigured dpkg, and clear corrupt caches
 sentinel help          # Display full CLI manual
 ```
 
@@ -133,6 +137,7 @@ When running `sentinel` without arguments, navigate using single keystrokes:
 | **`[v]`** | **Preservation Vault** | View and manage shielded directories and patterns |
 | **`[m]`** | **Apps Manager** | Inspect and uninstall developer tools and agentic CLIs |
 | **`[s]`** | **Bot Detective** | Audit rogue scripts and terminate silent daemons |
+| **`[d]`** | **Doctor & Heal** | Diagnose and repair broken packages, corrupt caches & stale locks |
 | **`[a]`** | **Select All Safe** | Quickly check all recommended safe-to-delete caches |
 | **`[n]`** | **Deselect All** | Clear all active checkboxes |
 | **`[u]`** | **System Updates** | Toggle automated package upgrades (`pkg`, `apt`, `npm`, `pip`) |

@@ -169,3 +169,24 @@ def test_windows_simulation(monkeypatch):
     # Verify kill_process_pid handles windows execution safely
     res = Termux_Sentinel.kill_process_pid(999999)
     assert isinstance(res, bool)
+
+
+def test_repair_and_doctor_diagnostics(capsys):
+    """Verify repair and doctor diagnostics run cleanly without error."""
+    assert hasattr(Termux_Sentinel, "cli_repair")
+    assert callable(Termux_Sentinel.cli_repair)
+    Termux_Sentinel.cli_repair(auto_fix=False)
+    out = capsys.readouterr().out
+    assert "DIAGNOSTIC" in out or "DIAGNOSTICS" in out
+
+
+def test_get_user_processes_cross_platform():
+    """Verify process scanning returns list of process tuples."""
+    assert hasattr(Termux_Sentinel, "get_user_processes")
+    procs = Termux_Sentinel.get_user_processes()
+    assert isinstance(procs, list)
+    if procs:
+        pid, cmd = procs[0]
+        assert isinstance(pid, int)
+        assert isinstance(cmd, str)
+
