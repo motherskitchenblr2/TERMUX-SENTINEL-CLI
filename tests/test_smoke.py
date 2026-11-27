@@ -321,3 +321,33 @@ def test_cli_prerequisites_entrypoint(capsys):
     out = capsys.readouterr().out
     assert "PREREQUISITES" in out
     assert "Python" in out
+
+
+def test_ollama_live_status_detection():
+    """Verify get_ollama_live_status returns structured live telemetry."""
+    assert hasattr(Termux_Sentinel, "get_ollama_live_status")
+    assert callable(Termux_Sentinel.get_ollama_live_status)
+    stat = Termux_Sentinel.get_ollama_live_status()
+    assert isinstance(stat, dict)
+    assert "running" in stat
+    assert "pulled_models" in stat
+    assert "model_count" in stat
+    assert isinstance(stat["pulled_models"], list)
+
+
+def test_ai_runtime_status_detects_storage_presence():
+    """Verify get_ai_runtime_status accurately distinguishes presence vs absence of models."""
+    assert hasattr(Termux_Sentinel, "get_ai_runtime_status")
+    assert callable(Termux_Sentinel.get_ai_runtime_status)
+    cfg = {
+        "provider": "ollama",
+        "model": "nonexistent_model_xyz",
+        "agentic_enabled": True,
+        "base_url": "http://127.0.0.1:11434",
+    }
+    stat = Termux_Sentinel.get_ai_runtime_status(cfg)
+    assert isinstance(stat, dict)
+    assert "badge" in stat
+    assert "model_in_storage" in stat
+    # Since nonexistent_model_xyz is not in storage, model_in_storage must be False
+    assert stat["model_in_storage"] is False

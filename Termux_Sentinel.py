@@ -580,6 +580,189 @@ def get_device_name():
 
 
 # ==============================================================================
+# AI CONFIGURATION & REAL-TIME RUNTIME TELEMETRY
+# ==============================================================================
+DEFAULT_AI_CONFIG = {
+    "provider": "ollama",
+    "provider_name": "Ollama (Local Offline)",
+    "base_url": "http://127.0.0.1:11434",
+    "api_key": "",
+    "model": "qwen2.5:3b",
+    "agentic_enabled": False,
+}
+
+
+def load_ai_config():
+    """Loads current AI engine configuration from disk."""
+    if not os.path.exists(AI_CONFIG_FILE):
+        return dict(DEFAULT_AI_CONFIG)
+    try:
+        with open(AI_CONFIG_FILE, encoding="utf-8") as f:
+            data = json.load(f)
+            if isinstance(data, dict):
+                return {**DEFAULT_AI_CONFIG, **data}
+    except Exception:
+        pass
+    return dict(DEFAULT_AI_CONFIG)
+
+
+def save_ai_config(cfg):
+    """Saves AI configuration securely with restricted file permissions."""
+    try:
+        os.makedirs(VAULT_DIR, exist_ok=True)
+        tmp_f = AI_CONFIG_FILE + f".tmp.{os.getpid()}"
+        with open(tmp_f, "w", encoding="utf-8") as f:
+            json.dump(cfg, f, indent=2)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp_f, AI_CONFIG_FILE)
+        if not IS_WINDOWS and hasattr(os, "chmod"):
+            try:
+                os.chmod(AI_CONFIG_FILE, 0o600)
+            except OSError:
+                pass
+    except Exception:
+        pass
+
+
+def toggle_agentic_mode():
+    """Toggles Agentic AI mode ON/OFF."""
+    cfg = load_ai_config()
+    cfg["agentic_enabled"] = not cfg.get("agentic_enabled", False)
+    save_ai_config(cfg)
+    return cfg["agentic_enabled"]
+
+
+def get_ollama_live_status(base_url="http://127.0.0.1:11434") -> dict:
+    """Verifies live Ollama daemon connectivity and lists actual downloaded models in storage."""
+    running = False
+    pulled_models = []
+
+    # 1. Probe live HTTP endpoint on base_url /api/tags
+    try:
+        req = urllib.request.Request(
+            f"{base_url}/api/tags",
+            headers={"User-Agent": "TermuxSentinel/2.0"},
+        )
+        with urllib.request.urlopen(req, timeout=1.0) as resp:
+            data = json.loads(resp.read().decode())
+            running = True
+            pulled_models = [
+                m.get("name") for m in data.get("models", []) if m.get("name")
+            ]
+    except Exception:
+        running = False
+
+    # 2. Check fallback process list if daemon is running
+    if not running:
+        try:
+            procs = get_user_processes()
+            for _pid, cmd in procs:
+                if "ollama serve" in cmd:
+                    running = True
+                    break
+        except Exception:
+            pass
+
+    return {
+        "running": running,
+        "base_url": base_url,
+        "pulled_models": pulled_models,
+        "model_count": len(pulled_models),
+    }
+
+
+def get_ai_runtime_status(cfg=None) -> dict:
+    """Returns real-time AI engine health, live daemon connectivity, and actual storage model presence."""
+    if cfg is None:
+        cfg = load_ai_config()
+
+    is_agent = cfg.get("agentic_enabled", False)
+    prov = cfg.get("provider", "ollama")
+    model = cfg.get("model", "None")
+    api_key = cfg.get("api_key", "")
+    base_url = cfg.get("base_url", "http://127.0.0.1:11434")
+
+    if not is_agent:
+        return {
+            "mode": "MANUAL",
+            "badge": f"{TEXT_MUTED}[○ MANUAL MODE [g]]{C_RESET}",
+            "summary": "Manual mode (Agentic AI disabled)",
+            "model_in_storage": False,
+            "daemon_live": False,
+            "pulled_models": [],
+        }
+
+    if prov == "ollama":
+        stat = get_ollama_live_status(base_url)
+        daemon_live = stat["running"]
+        pulled = stat["pulled_models"]
+
+        # Check if configured model is in storage
+        m_base = model.split(":")[0] if model else ""
+        in_storage = any(
+            model in pm or (m_base and m_base == pm.split(":")[0]) for pm in pulled
+        )
+
+        if not daemon_live:
+            return {
+                "mode": "DAEMON_OFFLINE",
+                "badge": f"{BADGE_RED} OLLAMA STOPPED {C_RESET}",
+                "summary": "Ollama daemon stopped. Launch via [o] or 'sentinel ai inspect'",
+                "model_in_storage": False,
+                "daemon_live": False,
+                "pulled_models": pulled,
+            }
+        elif in_storage:
+            return {
+                "mode": "ONLINE",
+                "badge": f"{BADGE_GREEN} ONLINE: {model[:16]} {C_RESET}",
+                "summary": f"Live on {base_url} ({model} verified in local storage)",
+                "model_in_storage": True,
+                "daemon_live": True,
+                "pulled_models": pulled,
+            }
+        elif pulled:
+            return {
+                "mode": "MODEL_NOT_FOUND",
+                "badge": f"{BADGE_YELLOW} NOT IN STORAGE: {model[:12]} {C_RESET}",
+                "summary": f"Daemon live, but '{model}' not downloaded. Pulled: {', '.join(pulled[:3])}",
+                "model_in_storage": False,
+                "daemon_live": True,
+                "pulled_models": pulled,
+            }
+        else:
+            return {
+                "mode": "ZERO_MODELS",
+                "badge": f"{BADGE_YELLOW} 0 MODELS IN STORAGE [o] {C_RESET}",
+                "summary": f"Daemon live on {base_url}, but 0 models downloaded in storage. Press [o] to pull.",
+                "model_in_storage": False,
+                "daemon_live": True,
+                "pulled_models": [],
+            }
+    else:
+        # Cloud providers
+        if not api_key:
+            return {
+                "mode": "NO_API_KEY",
+                "badge": f"{BADGE_YELLOW} {prov.upper()}: NO KEY {C_RESET}",
+                "summary": f"No API key configured. Run 'sentinel ai setup' to activate {prov.upper()}",
+                "model_in_storage": True,
+                "daemon_live": True,
+                "pulled_models": [],
+            }
+        else:
+            return {
+                "mode": "ONLINE",
+                "badge": f"{BADGE_GREEN} ONLINE: {model[:16]} {C_RESET}",
+                "summary": f"Cloud model '{model}' active via {prov.upper()}",
+                "model_in_storage": True,
+                "daemon_live": True,
+                "pulled_models": [],
+            }
+
+
+# ==============================================================================
 # NEON BORDER UI CONTAINERS & HEADERS (Mobile & Wide-Screen Desktop Adaptive)
 # ==============================================================================
 def render_hud_box(_view_name="DASHBOARD"):
@@ -621,15 +804,16 @@ def render_hud_box(_view_name="DASHBOARD"):
         grid_row2 = f"{NEON_CYAN}║{C_RESET} {status_lbl}{' ' * pad_l2} {NEON_CYAN}║{C_RESET} {mode_lbl}{' ' * pad_r2} {NEON_CYAN}║{C_RESET}"
 
         ai_cfg = load_ai_config()
-        is_agent = ai_cfg.get("agentic_enabled", False)
-        ai_model = ai_cfg.get("model", "None")[:18]
-        ai_prov = ai_cfg.get("provider", "ollama")
-        ai_lbl = (
-            f"AI Agent: {BADGE_GREEN} ONLINE: {ai_model} {C_RESET}"
-            if is_agent
-            else f"AI Mode: {TEXT_MUTED}[○ MANUAL MODE [g]]{C_RESET}"
-        )
-        engine_lbl = f"Offline Engine: {NEON_CYAN}{ai_prov.upper()} [o]{C_RESET}"
+        ai_stat = get_ai_runtime_status(ai_cfg)
+        ai_lbl = f"AI Agent: {ai_stat['badge']}"
+        if ai_cfg.get("provider") == "ollama":
+            if ai_stat["daemon_live"]:
+                m_count = len(ai_stat.get("pulled_models", []))
+                engine_lbl = f"Ollama: {NEON_GREEN}● LIVE (:11434 | {m_count} in storage) [o]{C_RESET}"
+            else:
+                engine_lbl = f"Ollama: {NEON_RED}○ STOPPED{C_RESET} [o]"
+        else:
+            engine_lbl = f"AI Provider: {NEON_CYAN}{ai_cfg.get('provider_name', 'Cloud')[:18]} [o]{C_RESET}"
         pad_l3 = max(0, left_w - visible_len(ai_lbl))
         pad_r3 = max(0, right_w - visible_len(engine_lbl))
         grid_row3 = f"{NEON_CYAN}║{C_RESET} {ai_lbl}{' ' * pad_l3} {NEON_CYAN}║{C_RESET} {engine_lbl}{' ' * pad_r3} {NEON_CYAN}║{C_RESET}"
@@ -644,18 +828,22 @@ def render_hud_box(_view_name="DASHBOARD"):
         r1 = f"Used: {NEON_YELLOW}{used}{C_RESET} | Free: {NEON_GREEN}{free}{C_RESET} ({pct})"
         r2 = f"Vault: {NEON_GREEN}{vault_count} Active Shields [v]{C_RESET}"
         ai_cfg = load_ai_config()
-        is_agent = ai_cfg.get("agentic_enabled", False)
-        ai_model = ai_cfg.get("model", "None")[:16]
-        r3 = (
-            f"AI: {BADGE_GREEN} ONLINE: {ai_model} {C_RESET} [g]"
-            if is_agent
-            else f"AI: {TEXT_MUTED}[○ MANUAL MODE [g]]{C_RESET}"
-        )
+        ai_stat = get_ai_runtime_status(ai_cfg)
+        r3 = f"AI: {ai_stat['badge']} [g]"
+        if ai_cfg.get("provider") == "ollama":
+            if ai_stat["daemon_live"]:
+                m_cnt = len(ai_stat.get("pulled_models", []))
+                r4 = f"Ollama: {NEON_GREEN}● LIVE 127.0.0.1:11434{C_RESET} ({m_cnt} models in storage)"
+            else:
+                r4 = f"Ollama: {NEON_RED}○ STOPPED{C_RESET} [sentinel ai inspect]"
+        else:
+            r4 = f"Provider: {NEON_CYAN}{ai_cfg.get('provider_name', 'Cloud')}{C_RESET}"
 
         print(top)
         print(make_box_row(r1, border_color=NEON_CYAN, cols=cols))
         print(make_box_row(r2, border_color=NEON_CYAN, cols=cols))
         print(make_box_row(r3, border_color=NEON_CYAN, cols=cols))
+        print(make_box_row(r4, border_color=NEON_CYAN, cols=cols))
         if is_crit:
             r_warn = f"{NEON_RED}⚠️ CRITICAL SPACE: {free_gb} GB FREE! [sentinel clean -y]{C_RESET}"
             print(make_box_row(r_warn, border_color=NEON_RED, cols=cols))
@@ -1772,6 +1960,7 @@ def check_core_prerequisites() -> dict:
 
     ollama_path = shutil.which("ollama")
     ollama_ver = "Unknown"
+    ollama_stat = get_ollama_live_status()
     if ollama_path:
         try:
             res = subprocess.run(
@@ -1793,6 +1982,22 @@ def check_core_prerequisites() -> dict:
                 ollama_ver = raw.strip().splitlines()[-1].strip()
         except Exception:
             pass
+
+    if ollama_path and ollama_stat["running"]:
+        m_cnt = len(ollama_stat["pulled_models"])
+        m_info = (
+            f"{m_cnt} in storage"
+            if m_cnt
+            else "0 in storage - pull via [o]"
+        )
+        ollama_disp_ver = f"{ollama_ver} (Live :11434)"
+        ollama_disp_role = f"Live 127.0.0.1:11434 ({m_info})"
+    elif ollama_path:
+        ollama_disp_ver = f"{ollama_ver} (Daemon stopped)"
+        ollama_disp_role = "Daemon stopped (Start via 'sentinel ai inspect')"
+    else:
+        ollama_disp_ver = "Not Installed"
+        ollama_disp_role = "Offline Local AI Inference Engine (Optional)"
 
     return {
         "python": {
@@ -1825,9 +2030,9 @@ def check_core_prerequisites() -> dict:
             "name": "Ollama Local AI",
             "mandatory": False,
             "installed": bool(ollama_path),
-            "version": ollama_ver if ollama_path else "Not Installed",
+            "version": ollama_disp_ver,
             "path": ollama_path,
-            "role": "Offline Local AI Inference Engine (Optional)",
+            "role": ollama_disp_role,
             "install_cmd": (
                 "pkg install -y ollama"
                 if IS_TERMUX
@@ -3765,56 +3970,6 @@ AI_PROVIDERS = {
     },
 }
 
-DEFAULT_AI_CONFIG = {
-    "provider": "ollama",
-    "provider_name": "Ollama (Local Offline)",
-    "base_url": "http://127.0.0.1:11434",
-    "api_key": "",
-    "model": "qwen2.5:3b",
-    "agentic_enabled": False,
-}
-
-
-def load_ai_config():
-    """Loads current AI engine configuration from disk."""
-    if not os.path.exists(AI_CONFIG_FILE):
-        return dict(DEFAULT_AI_CONFIG)
-    try:
-        with open(AI_CONFIG_FILE, encoding="utf-8") as f:
-            data = json.load(f)
-            if isinstance(data, dict):
-                return {**DEFAULT_AI_CONFIG, **data}
-    except Exception:
-        pass
-    return dict(DEFAULT_AI_CONFIG)
-
-
-def save_ai_config(cfg):
-    """Saves AI configuration securely with restricted file permissions."""
-    try:
-        os.makedirs(VAULT_DIR, exist_ok=True)
-        tmp_f = AI_CONFIG_FILE + f".tmp.{os.getpid()}"
-        with open(tmp_f, "w", encoding="utf-8") as f:
-            json.dump(cfg, f, indent=2)
-            f.flush()
-            os.fsync(f.fileno())
-        os.replace(tmp_f, AI_CONFIG_FILE)
-        if not IS_WINDOWS and hasattr(os, "chmod"):
-            try:
-                os.chmod(AI_CONFIG_FILE, 0o600)
-            except OSError:
-                pass
-    except Exception:
-        pass
-
-
-def toggle_agentic_mode():
-    """Toggles Agentic AI mode ON/OFF."""
-    cfg = load_ai_config()
-    cfg["agentic_enabled"] = not cfg.get("agentic_enabled", False)
-    save_ai_config(cfg)
-    return cfg["agentic_enabled"]
-
 
 def inspect_device_hardware():
     """Audits local device hardware capacity and determines recommended offline models."""
@@ -3845,21 +4000,9 @@ def inspect_device_hardware():
     disk_free_gb = round(usage.free / (1024**3), 2)
 
     ollama_path = shutil.which("ollama")
-    ollama_running = False
-    pulled_models = []
-    try:
-        req = urllib.request.Request(
-            "http://127.0.0.1:11434/api/tags",
-            headers={"User-Agent": "TermuxSentinel/2.0"},
-        )
-        with urllib.request.urlopen(req, timeout=1.5) as resp:
-            data = json.loads(resp.read().decode())
-            ollama_running = True
-            pulled_models = [
-                m.get("name") for m in data.get("models", []) if m.get("name")
-            ]
-    except Exception:
-        ollama_running = False
+    stat = get_ollama_live_status()
+    ollama_running = stat["running"]
+    pulled_models = stat["pulled_models"]
 
     if ram_total_gb < 3.5:
         tier_id = "ultra_compact"
@@ -4479,6 +4622,18 @@ def query_agentic_ai(prompt, system_prompt=None):
                 data = json.loads(resp.read().decode("utf-8"))
                 return data["content"][0]["text"].strip()
         elif p_type == "ollama":
+            stat = get_ollama_live_status(base_url)
+            if not stat["running"]:
+                return f"Error: Ollama daemon is not responding on {base_url}. Start it via 'sentinel ai inspect' or run 'ollama serve' in background."
+            m_base = model.split(":")[0] if model else ""
+            if not any(
+                model in pm or (m_base and m_base == pm.split(":")[0])
+                for pm in stat["pulled_models"]
+            ):
+                return (
+                    f"Error: Model '{model}' is not downloaded in Ollama storage.\n"
+                    f"Please run 'sentinel ai inspect' or 'ollama pull {model}' to download it first."
+                )
             url = f"{base_url}/api/generate"
             payload = json.dumps(
                 {
@@ -4627,19 +4782,38 @@ def cli_ai(action="menu", *args):
         print(f"{BRIGHT_WHITE}{resp}{C_RESET}\n")
     else:
         cfg = load_ai_config()
+        ai_stat = get_ai_runtime_status(cfg)
         print_large_header()
         print_section_h2("SENTINEL AGENTIC AI STATUS", color=NEON_PINK)
-        mode_str = (
-            f"{BADGE_GREEN} ONLINE {C_RESET}"
-            if cfg.get("agentic_enabled")
-            else f"{BADGE_YELLOW} MANUAL MODE (OFFLINE) {C_RESET}"
-        )
-        print(f"  Agent Status : {mode_str}")
+        print(f"  Agent Status   : {ai_stat['badge']}")
         print(
-            f"  Provider     : {NEON_CYAN}{cfg.get('provider_name', 'Ollama')}{C_RESET}"
+            f"  Provider       : {NEON_CYAN}{cfg.get('provider_name', 'Ollama')}{C_RESET}"
         )
-        print(f"  Active Model : {NEON_GREEN}{cfg.get('model', 'None')}{C_RESET}")
-        print(f"  Endpoint URL : {TEXT_MUTED}{cfg.get('base_url', 'N/A')}{C_RESET}")
+        print(f"  Target Model   : {BRIGHT_WHITE}{cfg.get('model', 'None')}{C_RESET}")
+        print(f"  Endpoint URL   : {TEXT_MUTED}{cfg.get('base_url', 'N/A')}{C_RESET}")
+
+        if cfg.get("provider") == "ollama":
+            daemon_txt = (
+                f"{NEON_GREEN}● Connected (127.0.0.1:11434 responding HTTP 200){C_RESET}"
+                if ai_stat["daemon_live"]
+                else f"{NEON_RED}○ Inactive / Unreachable{C_RESET}"
+            )
+            print(f"  Live Daemon    : {daemon_txt}")
+            pulled = ai_stat.get("pulled_models", [])
+            if pulled:
+                print(f"  Storage Models : {NEON_CYAN}{', '.join(pulled)}{C_RESET}")
+            else:
+                print(
+                    f"  Storage Models : {NEON_YELLOW}0 models in storage (None downloaded yet){C_RESET}"
+                )
+
+            if not ai_stat["model_in_storage"]:
+                print(
+                    f"\n  {BADGE_YELLOW} ATTENTION {C_RESET} {NEON_YELLOW}Model '{cfg.get('model')}' is NOT downloaded in your storage.{C_RESET}"
+                )
+                print(
+                    f"  {TEXT_MUTED}Run 'sentinel ai inspect' or 'ollama pull {cfg.get('model')}' to download it.{C_RESET}"
+                )
         print(f"\n{C_BOLD}{BRIGHT_WHITE}AI SUBCOMMANDS:{C_RESET}")
         print(
             f"  {NEON_YELLOW}sentinel ai inspect  {C_RESET} {TEXT_MUTED}Audit Device & Suggest Ollama Models{C_RESET}"
