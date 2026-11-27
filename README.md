@@ -129,6 +129,7 @@ sentinel ai setup      # Connect AI Providers (OpenCode/TokenHarbor/Gemini/Groq/
 sentinel ai toggle     # Toggle between Autonomous Agentic AI & Manual Mode
 sentinel ai advise     # Autonomous AI system analysis & 3-step action plan
 sentinel ai "<prompt>" # One-shot AI query with live Termux system telemetry
+sentinel prereqs       # Auto-check Python (required), Rclone & Ollama (optional)
 sentinel help          # Display full CLI manual
 ```
 

@@ -16,19 +16,64 @@ Write-Host " 🛡️  SENTINEL CLI/TUI - WINDOWS ONE-TAP INSTALLER" -ForegroundC
 Write-Host "==========================================================" -ForegroundColor Cyan
 Write-Host ""
 
-# 1. Check Python 3.9+
+# 1. Prerequisite Check: Python 3 (MANDATORY to run .py scripts)
 $pythonCmd = Get-Command python -ErrorAction SilentlyContinue
 if (-not $pythonCmd) {
     $pythonCmd = Get-Command python3 -ErrorAction SilentlyContinue
 }
 
 if (-not $pythonCmd) {
-    Write-Error "Python is not found in your PATH! Please install Python 3.9+ from https://python.org or via 'winget install Python.Python.3.12'."
+    Write-Host "⚠️  Python is required to run Termux Sentinel scripts (.py), but was not found in PATH." -ForegroundColor Yellow
+    $installPy = Read-Host "👉 Would you like to install Python 3.12 now via winget? (Y/N)"
+    if ($installPy -match '^[Yy]') {
+        Write-Host "📦 Installing Python via winget..." -ForegroundColor Cyan
+        winget install --id Python.Python.3.12 -e --accept-source-agreements --accept-package-agreements
+        $pythonCmd = Get-Command python -ErrorAction SilentlyContinue
+        if (-not $pythonCmd) {
+            $pythonCmd = Get-Command python3 -ErrorAction SilentlyContinue
+        }
+    }
+}
+
+if (-not $pythonCmd) {
+    Write-Error "Python 3 is required to run Termux Sentinel (.py scripts). Please install Python 3.9+ from https://python.org or run 'winget install Python.Python.3.12' then re-run install.ps1."
     exit 1
 }
 
 $pyVer = & $pythonCmd.Source -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')"
 Write-Host "[✓] Found Python $pyVer ($($pythonCmd.Source))" -ForegroundColor Green
+
+# 2. Check Optional Companion Tools: Rclone & Ollama
+$rcloneCmd = Get-Command rclone -ErrorAction SilentlyContinue
+if (-not $rcloneCmd) {
+    Write-Host ""
+    Write-Host "☁️  [Optional] Rclone is not installed (needed only for Google Drive sync & offload)." -ForegroundColor Yellow
+    $installRclone = Read-Host "👉 Would you like to install Rclone now via winget? (y/N)"
+    if ($installRclone -match '^[Yy]') {
+        Write-Host "📦 Installing Rclone via winget..." -ForegroundColor Cyan
+        winget install --id Rclone.Rclone -e --accept-source-agreements --accept-package-agreements
+    } else {
+        Write-Host "   [i] Skipped Rclone. Local storage and vault features remain 100% active." -ForegroundColor DarkGray
+    }
+} else {
+    Write-Host "[✓] Detected Rclone: $($rcloneCmd.Source)" -ForegroundColor Green
+}
+
+$ollamaCmd = Get-Command ollama -ErrorAction SilentlyContinue
+if (-not $ollamaCmd) {
+    Write-Host ""
+    Write-Host "🧠 [Optional] Ollama is not installed (needed only for offline local AI models)." -ForegroundColor Yellow
+    Write-Host "   (Cloud AI APIs like Gemini, Groq, OpenRouter work with zero local tools!)" -ForegroundColor DarkGray
+    $installOllama = Read-Host "👉 Would you like to install Ollama now via winget? (y/N)"
+    if ($installOllama -match '^[Yy]') {
+        Write-Host "📦 Installing Ollama via winget..." -ForegroundColor Cyan
+        winget install --id Ollama.Ollama -e --accept-source-agreements --accept-package-agreements
+    } else {
+        Write-Host "   [i] Skipped Ollama. Cloud AI models remain 100% available via 'sentinel ai setup'." -ForegroundColor DarkGray
+    }
+} else {
+    Write-Host "[✓] Detected Ollama: $($ollamaCmd.Source)" -ForegroundColor Green
+}
 
 # 2. Setup AppData and Vault
 $appDataDir = [System.IO.Path]::Combine($env:APPDATA, "termux_sentinel")

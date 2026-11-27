@@ -48,6 +48,7 @@ BADGE_RED = f"{C_BOLD}\033[48;5;196m\033[38;5;231m"
 BADGE_GREEN = f"{C_BOLD}\033[48;5;46m\033[38;5;232m"
 BADGE_CYAN = f"{C_BOLD}\033[48;5;51m\033[38;5;232m"
 BADGE_YELLOW = f"{C_BOLD}\033[48;5;226m\033[38;5;232m"
+BADGE_BLUE = f"{C_BOLD}\033[48;5;39m\033[38;5;231m"
 
 ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
 
@@ -1748,6 +1749,258 @@ def render_vault_view(vault_items):
 
 
 # ==============================================================================
+# CORE PREREQUISITES & COMPANION AUDIT (PYTHON, RCLONE, OLLAMA)
+# ==============================================================================
+def check_core_prerequisites() -> dict:
+    """Audits core runtime (Python - Mandatory) and companion tools (Rclone, Ollama - Optional)."""
+    py_ver = f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
+    py_ok = sys.version_info >= (3, 9)
+
+    rclone_path = shutil.which("rclone")
+    rclone_ver = "Unknown"
+    if rclone_path:
+        try:
+            res = subprocess.run(
+                [rclone_path, "version"], capture_output=True, text=True, check=False
+            )
+            if res.returncode == 0 and res.stdout:
+                rclone_ver = res.stdout.splitlines()[0].strip()
+        except Exception:
+            pass
+
+    ollama_path = shutil.which("ollama")
+    ollama_ver = "Unknown"
+    if ollama_path:
+        try:
+            res = subprocess.run(
+                [ollama_path, "--version"], capture_output=True, text=True, check=False
+            )
+            raw = (res.stdout or "") + "\n" + (res.stderr or "")
+            for line in raw.splitlines():
+                line_str = line.strip()
+                if "version is" in line_str:
+                    ver_part = line_str.split("version is")[-1].strip()
+                    ollama_ver = (
+                        f"v{ver_part}" if not ver_part.startswith("v") else ver_part
+                    )
+                    break
+                elif "ollama version" in line_str.lower():
+                    ollama_ver = line_str
+                    break
+            if ollama_ver == "Unknown" and raw.strip():
+                ollama_ver = raw.strip().splitlines()[-1].strip()
+        except Exception:
+            pass
+
+    return {
+        "python": {
+            "name": "Python 3 Runtime",
+            "mandatory": True,
+            "installed": py_ok,
+            "version": py_ver,
+            "path": sys.executable,
+            "role": "Core Engine Execution (.py scripts)",
+            "install_hint": "pkg install python  OR  apt install python3  OR  winget install Python.Python.3.12",
+        },
+        "rclone": {
+            "name": "Rclone Cloud Sync",
+            "mandatory": False,
+            "installed": bool(rclone_path),
+            "version": rclone_ver if rclone_path else "Not Installed",
+            "path": rclone_path,
+            "role": "Google Drive Cloud Backup & Offloading (Optional)",
+            "install_cmd": (
+                "pkg install -y rclone"
+                if IS_TERMUX
+                else (
+                    "winget install Rclone.Rclone"
+                    if IS_WINDOWS
+                    else "sudo apt install -y rclone"
+                )
+            ),
+        },
+        "ollama": {
+            "name": "Ollama Local AI",
+            "mandatory": False,
+            "installed": bool(ollama_path),
+            "version": ollama_ver if ollama_path else "Not Installed",
+            "path": ollama_path,
+            "role": "Offline Local AI Inference Engine (Optional)",
+            "install_cmd": (
+                "pkg install -y ollama"
+                if IS_TERMUX
+                else (
+                    "winget install Ollama.Ollama"
+                    if IS_WINDOWS
+                    else "curl -fsSL https://ollama.com/install.sh | sh"
+                )
+            ),
+        },
+    }
+
+
+def install_optional_dependency(dep_name: str) -> bool:
+    """Interactively installs optional companion tools (rclone or ollama) based on host platform."""
+    dep_name = dep_name.lower().strip()
+    if dep_name not in ("rclone", "ollama"):
+        print(f"{NEON_RED}Unknown companion tool: {dep_name}{C_RESET}")
+        return False
+
+    animate_safe(
+        "INSTALLING", f"Installing optional tool: {dep_name.upper()}...", duration=0.8
+    )
+
+    cmd = []
+    if IS_TERMUX:
+        cmd = ["pkg", "install", "-y", dep_name]
+    elif IS_WINDOWS:
+        pkg_id = "Rclone.Rclone" if dep_name == "rclone" else "Ollama.Ollama"
+        cmd = [
+            "winget",
+            "install",
+            "--id",
+            pkg_id,
+            "-e",
+            "--accept-source-agreements",
+            "--accept-package-agreements",
+        ]
+    else:
+        # Linux / macOS
+        if dep_name == "rclone":
+            if shutil.which("apt-get"):
+                sudo_prefix = (
+                    ["sudo"]
+                    if hasattr(os, "geteuid") and os.geteuid() != 0 and shutil.which("sudo")
+                    else []
+                )
+                cmd = sudo_prefix + ["apt-get", "install", "-y", "rclone"]
+            elif shutil.which("dnf"):
+                sudo_prefix = (
+                    ["sudo"]
+                    if hasattr(os, "geteuid") and os.geteuid() != 0 and shutil.which("sudo")
+                    else []
+                )
+                cmd = sudo_prefix + ["dnf", "install", "-y", "rclone"]
+            elif shutil.which("pacman"):
+                sudo_prefix = (
+                    ["sudo"]
+                    if hasattr(os, "geteuid") and os.geteuid() != 0 and shutil.which("sudo")
+                    else []
+                )
+                cmd = sudo_prefix + ["pacman", "-S", "--noconfirm", "rclone"]
+            elif shutil.which("brew"):
+                cmd = ["brew", "install", "rclone"]
+        elif dep_name == "ollama":
+            if shutil.which("curl"):
+                cmd = ["sh", "-c", "curl -fsSL https://ollama.com/install.sh | sh"]
+
+    if not cmd:
+        print(
+            f"{NEON_RED}No automated installer command determined for {dep_name} on this platform.{C_RESET}"
+        )
+        return False
+
+    try:
+        res = subprocess.run(cmd, check=False)
+        time.sleep(1.0)
+        found = bool(shutil.which(dep_name))
+        if found:
+            print(f"\n{NEON_GREEN}✓ Successfully installed {dep_name.upper()}!{C_RESET}")
+            return True
+        else:
+            if res.returncode == 0:
+                print(
+                    f"\n{NEON_YELLOW}Installer finished. Restart terminal if {dep_name} is not immediately found in PATH.{C_RESET}"
+                )
+                return True
+            else:
+                print(
+                    f"\n{NEON_RED}✗ Installation command exited with code {res.returncode}.{C_RESET}"
+                )
+                return False
+    except Exception as e:
+        print(f"\n{NEON_RED}Failed to install {dep_name}: {e}{C_RESET}")
+        return False
+
+
+def cli_prerequisites(interactive=False):
+    """Audits prerequisites and optionally installs missing companion tools."""
+    cols = get_term_cols()
+    print_large_header()
+    print_section_h2("SYSTEM PREREQUISITES & COMPANION TOOLS AUDIT", color=NEON_CYAN)
+
+    data = check_core_prerequisites()
+
+    print(
+        f"\n{C_BOLD}{BRIGHT_WHITE}{'TOOL / RUNTIME':<22} {'TYPE':<14} {'STATUS':<16} {'ROLE & DETAILS'}{C_RESET}"
+    )
+    print(f"{NEON_CYAN}{'─' * (cols - 2)}{C_RESET}")
+
+    for _k, info in data.items():
+        type_badge = (
+            f"{BADGE_RED} REQUIRED {C_RESET}"
+            if info["mandatory"]
+            else f"{BADGE_BLUE} OPTIONAL {C_RESET}"
+        )
+        if info["installed"]:
+            status_badge = f"{BADGE_GREEN} INSTALLED {C_RESET}"
+            detail = f"{info['version']} ({info['role']})"
+        else:
+            status_badge = (
+                f"{BADGE_YELLOW} MISSING {C_RESET}"
+                if not info["mandatory"]
+                else f"{BADGE_RED} MISSING {C_RESET}"
+            )
+            detail = f"{NEON_YELLOW}{info['role']}{C_RESET}"
+
+        trunc_name = info["name"][:20]
+        print(
+            f"  {BRIGHT_WHITE}{trunc_name:<20}{C_RESET} {type_badge} {status_badge} {detail}"
+        )
+
+    print(f"{NEON_CYAN}{'─' * (cols - 2)}{C_RESET}")
+    print(
+        f"  {C_BOLD}{NEON_GREEN}Summary:{C_RESET} Python is required to execute .py scripts. Rclone & Ollama are optional companions."
+    )
+
+    if not interactive:
+        return
+
+    missing_optionals = [
+        k for k, v in data.items() if not v["mandatory"] and not v["installed"]
+    ]
+    if not missing_optionals:
+        print(
+            f"\n  {NEON_GREEN}✓ All core runtime and optional companion tools are already installed!{C_RESET}\n"
+        )
+        return
+
+    print(f"\n{C_BOLD}{BRIGHT_WHITE}Optional Installation Options:{C_RESET}")
+    if "rclone" in missing_optionals:
+        print(
+            f"  {NEON_YELLOW}[r]{C_RESET} Install Rclone (for Google Drive cloud sync & offloading)"
+        )
+    if "ollama" in missing_optionals:
+        print(f"  {NEON_YELLOW}[o]{C_RESET} Install Ollama (for offline local AI models)")
+    print(f"  {TEXT_MUTED}[Enter / q] Skip & Continue with Sentinel{C_RESET}")
+
+    try:
+        ch = (
+            input(f"\n{BG_CHARCOAL}{C_BOLD}{NEON_CYAN} Prerequisites ❯ {C_RESET}")
+            .strip()
+            .lower()
+        )
+        if ch == "r" and "rclone" in missing_optionals:
+            install_optional_dependency("rclone")
+        elif ch == "o" and "ollama" in missing_optionals:
+            install_optional_dependency("ollama")
+        else:
+            print(f"  {TEXT_MUTED}Continuing without installing optional tools.{C_RESET}")
+    except (KeyboardInterrupt, EOFError):
+        return
+
+
+# ==============================================================================
 # CLOUD STATUS & ACTIONS
 # ==============================================================================
 def show_rclone_status():
@@ -1755,6 +2008,36 @@ def show_rclone_status():
     clear_screen()
     print_large_header()
     print_section_h2("📡 RCLONE CLOUD BACKUP LIVE TELEMETRY", color=NEON_CYAN)
+
+    if not shutil.which("rclone"):
+        print(
+            f"  {BADGE_YELLOW} RCLONE NOT INSTALLED {C_RESET} {TEXT_MUTED}Rclone is an optional companion tool for cloud sync & offload.{C_RESET}\n"
+        )
+        print(
+            f"  {C_BOLD}{BRIGHT_WHITE}Google Drive backup and offload features require Rclone.{C_RESET}"
+        )
+        try:
+            choice = (
+                input(
+                    f"\n{NEON_CYAN}👉 Would you like to install Rclone now? (y/N): {C_RESET}"
+                )
+                .strip()
+                .lower()
+            )
+            if choice == "y":
+                if install_optional_dependency("rclone"):
+                    time.sleep(1.0)
+                else:
+                    return
+            else:
+                print(
+                    f"\n  {TEXT_MUTED}Skipping Rclone. Local storage & vault features remain 100% active.{C_RESET}"
+                )
+                time.sleep(1.5)
+                return
+        except (KeyboardInterrupt, EOFError):
+            return
+
     pgrep_bin = shutil.which("pgrep") or "pgrep"
     ps = subprocess.run(
         [pgrep_bin, "-f", "rclone"], capture_output=True, text=True
@@ -2640,6 +2923,30 @@ def cli_bots(action="scan", pid=None):
 
 
 def cli_cloud(_live=False, start=False):
+    if not shutil.which("rclone"):
+        print(
+            f"{NEON_YELLOW}⚠️  Rclone is not installed (optional dependency for cloud sync).{C_RESET}"
+        )
+        try:
+            choice = (
+                input(
+                    f"{NEON_CYAN}👉 Would you like to install Rclone now? (y/N): {C_RESET}"
+                )
+                .strip()
+                .lower()
+            )
+            if choice == "y":
+                if not install_optional_dependency("rclone"):
+                    print(f"{NEON_RED}Rclone installation was not completed.{C_RESET}")
+                    return
+            else:
+                print(
+                    f"{TEXT_MUTED}Skipped. Local storage operations remain 100% active.{C_RESET}"
+                )
+                return
+        except (KeyboardInterrupt, EOFError):
+            return
+
     if start:
         animate_safe(
             "STARTING", "Launching background Rclone cloud backup...", duration=0.8
@@ -2753,8 +3060,31 @@ def cli_offload(target_path, remote_folder="Offloaded"):
 
     rclone_bin = shutil.which("rclone")
     if not rclone_bin:
-        print(f"{NEON_RED}Error: rclone is not installed or not in PATH.{C_RESET}")
-        return
+        print(
+            f"{NEON_YELLOW}⚠️  Rclone is not installed (optional tool needed to offload files to Google Drive).{C_RESET}"
+        )
+        try:
+            choice = (
+                input(
+                    f"{NEON_CYAN}👉 Would you like to install Rclone now? (y/N): {C_RESET}"
+                )
+                .strip()
+                .lower()
+            )
+            if choice == "y":
+                if not install_optional_dependency("rclone"):
+                    print(
+                        f"{NEON_RED}Cannot offload: rclone installation was not completed.{C_RESET}"
+                    )
+                    return
+                rclone_bin = shutil.which("rclone")
+            else:
+                print(
+                    f"{TEXT_MUTED}Offload cancelled. File remains safely stored locally.{C_RESET}"
+                )
+                return
+        except (KeyboardInterrupt, EOFError):
+            return
 
     remotes_out = ""
     try:
@@ -3696,12 +4026,17 @@ def render_hardware_inspection_view():
             f"  [{idx}] {badge} {BRIGHT_WHITE}{m['name']:<18}{C_RESET} {NEON_YELLOW}{m['ram']:<10}{C_RESET} {TEXT_MUTED}{m['desc']}{C_RESET}"
         )
 
+    ollama_action = (
+        f"{NEON_GREEN}[s]{C_RESET} Start Daemon"
+        if info["ollama_path"]
+        else f"{NEON_YELLOW}[i]{C_RESET} Install Ollama"
+    )
     print(
         f"\n{NEON_CYAN}╔═ ACTIONS ═════════════════════════════════════════════╗{C_RESET}"
     )
     print(
         make_box_row(
-            f"{NEON_YELLOW}[1-{len(info['recommended_models'])}]{C_RESET} Pull Model    {NEON_GREEN}[s]{C_RESET} Start Ollama Daemon",
+            f"{NEON_YELLOW}[1-{len(info['recommended_models'])}]{C_RESET} Pull Model    {ollama_action}",
             border_color=NEON_CYAN,
             cols=cols,
         )
@@ -3729,13 +4064,54 @@ def render_hardware_inspection_view():
     if not act or act == "b":
         return
 
+    if act == "i":
+        if info["ollama_path"]:
+            print(
+                f"\n{NEON_GREEN}✓ Ollama is already installed at: {info['ollama_path']}{C_RESET}"
+            )
+            time.sleep(1.5)
+        else:
+            try:
+                ch = (
+                    input(
+                        f"\n{NEON_CYAN}👉 Install optional tool Ollama now? (y/N): {C_RESET}"
+                    )
+                    .strip()
+                    .lower()
+                )
+                if ch == "y":
+                    install_optional_dependency("ollama")
+                    time.sleep(1.5)
+            except (KeyboardInterrupt, EOFError):
+                pass
+        render_hardware_inspection_view()
+        return
+
     if act == "s":
         if not info["ollama_path"]:
-            print(
-                f"\n{NEON_RED}Ollama is not installed. Install via: pkg install ollama{C_RESET}"
-            )
-            time.sleep(2.0)
-            return
+            print(f"\n{NEON_YELLOW}⚠️  Ollama is not installed.{C_RESET}")
+            try:
+                ch = (
+                    input(
+                        f"{NEON_CYAN}👉 Would you like to install Ollama now? (y/N): {C_RESET}"
+                    )
+                    .strip()
+                    .lower()
+                )
+                if ch == "y":
+                    if install_optional_dependency("ollama"):
+                        info = inspect_device_hardware()
+                    else:
+                        time.sleep(1.5)
+                        return
+                else:
+                    print(
+                        f"  {TEXT_MUTED}Skipping Ollama. Cloud AI models remain 100% available via [c].{C_RESET}"
+                    )
+                    time.sleep(1.5)
+                    return
+            except (KeyboardInterrupt, EOFError):
+                return
         animate_safe(
             "STARTING", "Launching Ollama daemon in background...", duration=0.8
         )
@@ -3765,10 +4141,30 @@ def render_hardware_inspection_view():
     if target_model:
         if not info["ollama_path"]:
             print(
-                f"\n{NEON_RED}Ollama CLI is required to pull models. Install via: pkg install ollama{C_RESET}"
+                f"\n{NEON_YELLOW}⚠️  Ollama CLI is required to run offline models locally.{C_RESET}"
             )
-            time.sleep(2.0)
-            return
+            try:
+                ch = (
+                    input(
+                        f"{NEON_CYAN}👉 Would you like to install Ollama now? (y/N): {C_RESET}"
+                    )
+                    .strip()
+                    .lower()
+                )
+                if ch == "y":
+                    if install_optional_dependency("ollama"):
+                        info = inspect_device_hardware()
+                    else:
+                        time.sleep(1.5)
+                        return
+                else:
+                    print(
+                        f"  {TEXT_MUTED}Skipped. You can use Cloud AI providers instead with zero local installation.{C_RESET}"
+                    )
+                    time.sleep(1.5)
+                    return
+            except (KeyboardInterrupt, EOFError):
+                return
         print(
             f"\n{NEON_CYAN}Starting pull for {BRIGHT_WHITE}{target_model}{NEON_CYAN}...{C_RESET}"
         )
@@ -4294,6 +4690,7 @@ def cli_help():
         ("sentinel ai inspect", "Hardware & Offline Models"),
         ("sentinel ai toggle", "Toggle AI Mode (ON/OFF)"),
         ("sentinel ai advise", "AI Autonomous System Plan"),
+        ("sentinel prereqs", "Check Python, Rclone & Ollama"),
         ("sentinel help", "CLI Command Manual"),
     ]
 
@@ -4381,6 +4778,11 @@ def cli_entrypoint():
         sub = sys.argv[2].lower() if len(sys.argv) > 2 else "menu"
         extra = sys.argv[3:] if len(sys.argv) > 3 else []
         cli_ai(sub, *extra)
+    elif cmd in ("prereqs", "prereq", "deps", "dependencies", "check"):
+        interactive = not any(
+            a in ("--non-interactive", "--quiet", "-q") for a in sys.argv[2:]
+        )
+        cli_prerequisites(interactive=interactive)
     elif cmd in ("update", "upgrade"):
         cli_update()
     elif cmd in ("help", "-h", "--help"):

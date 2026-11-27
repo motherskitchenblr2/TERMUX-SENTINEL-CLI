@@ -284,3 +284,40 @@ def test_cli_ai_entrypoint(capsys):
     Termux_Sentinel.cli_ai("status")
     out = capsys.readouterr().out
     assert "AGENTIC AI STATUS" in out
+
+
+def test_check_core_prerequisites():
+    """Verify check_core_prerequisites returns valid structure and properties."""
+    assert hasattr(Termux_Sentinel, "check_core_prerequisites")
+    assert callable(Termux_Sentinel.check_core_prerequisites)
+    prereqs = Termux_Sentinel.check_core_prerequisites()
+    assert isinstance(prereqs, dict)
+    for tool in ("python", "rclone", "ollama"):
+        assert tool in prereqs
+        assert "mandatory" in prereqs[tool]
+        assert "installed" in prereqs[tool]
+        assert "name" in prereqs[tool]
+        assert "role" in prereqs[tool]
+
+    assert prereqs["python"]["mandatory"] is True
+    assert prereqs["python"]["installed"] is True
+    assert prereqs["rclone"]["mandatory"] is False
+    assert prereqs["ollama"]["mandatory"] is False
+
+
+def test_install_optional_dependency():
+    """Verify install_optional_dependency validates input and rejects unknown tools."""
+    assert hasattr(Termux_Sentinel, "install_optional_dependency")
+    assert callable(Termux_Sentinel.install_optional_dependency)
+    res = Termux_Sentinel.install_optional_dependency("unknown_dep_tool")
+    assert res is False
+
+
+def test_cli_prerequisites_entrypoint(capsys):
+    """Verify cli_prerequisites runs non-interactively without error."""
+    assert hasattr(Termux_Sentinel, "cli_prerequisites")
+    assert callable(Termux_Sentinel.cli_prerequisites)
+    Termux_Sentinel.cli_prerequisites(interactive=False)
+    out = capsys.readouterr().out
+    assert "PREREQUISITES" in out
+    assert "Python" in out
