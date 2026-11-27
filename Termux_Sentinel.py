@@ -48,7 +48,10 @@ BADGE_YELLOW = f"{C_BOLD}\033[48;5;226m\033[38;5;232m"
 ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
 
 IS_WINDOWS = sys.platform == "win32"
-IS_TERMUX = os.path.exists("/data/data/com.termux/files/usr/bin") or "TERMUX_VERSION" in os.environ
+IS_TERMUX = (
+    os.path.exists("/data/data/com.termux/files/usr/bin")
+    or "TERMUX_VERSION" in os.environ
+)
 
 HOME_DIR = os.path.expanduser("~")
 if IS_WINDOWS:
@@ -503,14 +506,18 @@ def get_device_name():
             getprop_bin = shutil.which("getprop") or "/system/bin/getprop"
             brand = (
                 subprocess.check_output(  # nosec B603
-                    [getprop_bin, "ro.product.brand"], text=True, stderr=subprocess.DEVNULL
+                    [getprop_bin, "ro.product.brand"],
+                    text=True,
+                    stderr=subprocess.DEVNULL,
                 )
                 .strip()
                 .upper()
             )
             model = (
                 subprocess.check_output(  # nosec B603
-                    [getprop_bin, "ro.product.model"], text=True, stderr=subprocess.DEVNULL
+                    [getprop_bin, "ro.product.model"],
+                    text=True,
+                    stderr=subprocess.DEVNULL,
                 )
                 .strip()
                 .upper()
@@ -1421,7 +1428,11 @@ def render_main_view(clean_targets, update_targets, selected):
             cols=cols,
         )
     )
-    print(make_box_row(f"{NEON_RED}[q]{C_RESET} Cancel & Exit", border_color=NEON_CYAN, cols=cols))
+    print(
+        make_box_row(
+            f"{NEON_RED}[q]{C_RESET} Cancel & Exit", border_color=NEON_CYAN, cols=cols
+        )
+    )
     print(f"{NEON_CYAN}╚" + "═" * (cols - 2) + f"╝{C_RESET}")
 
 
