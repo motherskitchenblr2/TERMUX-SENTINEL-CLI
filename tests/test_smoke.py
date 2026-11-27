@@ -229,3 +229,59 @@ def test_atomic_save_vault(tmp_path, monkeypatch):
     with open(test_vault, encoding="utf-8") as f:
         loaded = json.load(f)
     assert loaded[0]["name"] == "Atomic Test"
+
+
+def test_inspect_device_hardware():
+    """Verify hardware inspector returns complete telemetry and recommendation tier."""
+    assert hasattr(Termux_Sentinel, "inspect_device_hardware")
+    info = Termux_Sentinel.inspect_device_hardware()
+    assert isinstance(info, dict)
+    for key in [
+        "cpu_cores",
+        "arch",
+        "ram_total_gb",
+        "disk_free_gb",
+        "tier_id",
+        "recommended_models",
+    ]:
+        assert key in info
+    assert len(info["recommended_models"]) > 0
+    assert "name" in info["recommended_models"][0]
+
+
+def test_ai_config_crud(tmp_path, monkeypatch):
+    """Verify loading, saving and toggling AI configuration."""
+    cfg_path = tmp_path / "ai_config.json"
+    monkeypatch.setattr(Termux_Sentinel, "AI_CONFIG_FILE", str(cfg_path))
+    monkeypatch.setattr(Termux_Sentinel, "VAULT_DIR", str(tmp_path))
+
+    cfg = Termux_Sentinel.load_ai_config()
+    assert isinstance(cfg, dict)
+    assert cfg.get("provider") == "ollama"
+
+    state1 = Termux_Sentinel.toggle_agentic_mode()
+    assert isinstance(state1, bool)
+    assert state1 is True
+    reloaded = Termux_Sentinel.load_ai_config()
+    assert reloaded["agentic_enabled"] is True
+
+    state2 = Termux_Sentinel.toggle_agentic_mode()
+    assert state2 is False
+
+
+def test_validate_and_sync_models_mock():
+    """Verify provider validation parser logic."""
+    assert hasattr(Termux_Sentinel, "validate_and_sync_models")
+    ok, err, models = Termux_Sentinel.validate_and_sync_models(
+        "invalid_provider", "bad_key"
+    )
+    assert ok is False
+
+
+def test_cli_ai_entrypoint(capsys):
+    """Verify cli_ai routes without crash."""
+    assert hasattr(Termux_Sentinel, "cli_ai")
+    Termux_Sentinel.cli_ai("status")
+    out = capsys.readouterr().out
+    assert "AGENTIC AI STATUS" in out
+

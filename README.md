@@ -121,6 +121,14 @@ sentinel auto-clean    # Headless cron/widget auto-pruner with audit logging
 sentinel doctor        # Diagnostic scan for broken packages, stale locks & dangling links
 sentinel repair        # Auto-heal broken dependencies, unconfigured dpkg, and clear corrupt caches
 sentinel heal          # Audit and self-heal Sentinel configs, permissions, and vault integrity
+
+# 🤖 Agentic AI & Hardware Capacity Inspector
+sentinel ai            # View Agentic AI Status & Active Model
+sentinel ai inspect    # Hardware Capacity Audit & Offline Ollama Advisor
+sentinel ai setup      # Connect AI Providers (OpenCode/TokenHarbor/Gemini/Groq/Ollama)
+sentinel ai toggle     # Toggle between Autonomous Agentic AI & Manual Mode
+sentinel ai advise     # Autonomous AI system analysis & 3-step action plan
+sentinel ai "<prompt>" # One-shot AI query with live Termux system telemetry
 sentinel help          # Display full CLI manual
 ```
 
@@ -139,6 +147,10 @@ When running `sentinel` without arguments, navigate using single keystrokes:
 | **`[m]`** | **Apps Manager** | Inspect and uninstall developer tools and agentic CLIs |
 | **`[s]`** | **Bot Detective** | Audit rogue scripts and terminate silent daemons |
 | **`[d]`** | **Doctor & Heal** | Diagnose and repair broken packages, corrupt caches & stale locks |
+| **`[g]`** | **Toggle AI Agent** | Switch between Autonomous Agentic AI and Manual Mode |
+| **`[x]`** | **AI Advisor** | Run AI system telemetry analysis & optimization plan |
+| **`[o]`** | **Ollama Inspector** | Hardware capacity audit & offline small model puller |
+| **`[k]`** | **AI Providers** | Connect & live-sync AI providers (Token Harbor, Groq, Gemini) |
 | **`[a]`** | **Select All Safe** | Quickly check all recommended safe-to-delete caches |
 | **`[n]`** | **Deselect All** | Clear all active checkboxes |
 | **`[u]`** | **System Updates** | Toggle automated package upgrades (`pkg`, `apt`, `npm`, `pip`) |

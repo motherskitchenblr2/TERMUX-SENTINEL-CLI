@@ -19,6 +19,9 @@ import sys
 import time
 import traceback
 import unicodedata
+import urllib.error
+import urllib.parse
+import urllib.request
 
 # ==============================================================================
 # NEON GLOW & DARK CHARCOAL COLOR PALETTE (256-Color ANSI)
@@ -62,6 +65,7 @@ else:
     VAULT_DIR = os.path.join(HOME_DIR, ".config", "termux_sentinel")
 VAULT_FILE = os.path.join(VAULT_DIR, "vault.json")
 CRASH_LOG_FILE = os.path.join(VAULT_DIR, "crash.log")
+AI_CONFIG_FILE = os.path.join(VAULT_DIR, "ai_config.json")
 UBUNTU_ROOT = (
     "/data/data/com.termux/files/usr/var/lib/proot-distro/containers/ubuntu/rootfs"
     if IS_TERMUX
@@ -615,18 +619,42 @@ def render_hud_box(_view_name="DASHBOARD"):
         pad_r2 = max(0, right_w - visible_len(mode_lbl))
         grid_row2 = f"{NEON_CYAN}║{C_RESET} {status_lbl}{' ' * pad_l2} {NEON_CYAN}║{C_RESET} {mode_lbl}{' ' * pad_r2} {NEON_CYAN}║{C_RESET}"
 
+        ai_cfg = load_ai_config()
+        is_agent = ai_cfg.get("agentic_enabled", False)
+        ai_model = ai_cfg.get("model", "None")[:18]
+        ai_prov = ai_cfg.get("provider", "ollama")
+        ai_lbl = (
+            f"AI Agent: {BADGE_GREEN} ONLINE: {ai_model} {C_RESET}"
+            if is_agent
+            else f"AI Mode: {TEXT_MUTED}[○ MANUAL MODE [g]]{C_RESET}"
+        )
+        engine_lbl = f"Offline Engine: {NEON_CYAN}{ai_prov.upper()} [o]{C_RESET}"
+        pad_l3 = max(0, left_w - visible_len(ai_lbl))
+        pad_r3 = max(0, right_w - visible_len(engine_lbl))
+        grid_row3 = f"{NEON_CYAN}║{C_RESET} {ai_lbl}{' ' * pad_l3} {NEON_CYAN}║{C_RESET} {engine_lbl}{' ' * pad_r3} {NEON_CYAN}║{C_RESET}"
+
         print(top)
         print(grid_row1)
         print(grid_row2)
+        print(grid_row3)
         print(bot)
     else:
         # Mobile Compact Stack
         r1 = f"Used: {NEON_YELLOW}{used}{C_RESET} | Free: {NEON_GREEN}{free}{C_RESET} ({pct})"
         r2 = f"Vault: {NEON_GREEN}{vault_count} Active Shields [v]{C_RESET}"
+        ai_cfg = load_ai_config()
+        is_agent = ai_cfg.get("agentic_enabled", False)
+        ai_model = ai_cfg.get("model", "None")[:16]
+        r3 = (
+            f"AI: {BADGE_GREEN} ONLINE: {ai_model} {C_RESET} [g]"
+            if is_agent
+            else f"AI: {TEXT_MUTED}[○ MANUAL MODE [g]]{C_RESET}"
+        )
 
         print(top)
         print(make_box_row(r1, border_color=NEON_CYAN, cols=cols))
         print(make_box_row(r2, border_color=NEON_CYAN, cols=cols))
+        print(make_box_row(r3, border_color=NEON_CYAN, cols=cols))
         if is_crit:
             r_warn = f"{NEON_RED}⚠️ CRITICAL SPACE: {free_gb} GB FREE! [sentinel clean -y]{C_RESET}"
             print(make_box_row(r_warn, border_color=NEON_RED, cols=cols))
@@ -1463,6 +1491,20 @@ def render_main_view(clean_targets, update_targets, selected):
     )
     print(
         make_box_row(
+            f"{NEON_PINK}[g]{C_RESET} Toggle AI Agent {NEON_GREEN}[x]{C_RESET} AI Advisor",
+            border_color=NEON_CYAN,
+            cols=cols,
+        )
+    )
+    print(
+        make_box_row(
+            f"{NEON_CYAN}[o]{C_RESET} Ollama Inspector{NEON_PURPLE}[k]{C_RESET} AI Providers",
+            border_color=NEON_CYAN,
+            cols=cols,
+        )
+    )
+    print(
+        make_box_row(
             f"{NEON_CYAN}[f]{C_RESET} Refresh State   {NEON_GREEN}[r]{C_RESET} Cloud Sync",
             border_color=NEON_CYAN,
             cols=cols,
@@ -2271,6 +2313,21 @@ def main():
             input(
                 f"\n{C_BOLD}{BRIGHT_WHITE}Press Enter to return to Termux_Sentinel...{C_RESET}"
             )
+        elif choice == "g":
+            new_s = toggle_agentic_mode()
+            tag = "ENABLED (ONLINE)" if new_s else "DISABLED (MANUAL MODE)"
+            print(
+                f"\n{NEON_GREEN if new_s else NEON_YELLOW}Agentic AI Mode is now {tag}.{C_RESET}"
+            )
+            time.sleep(1.0)
+        elif choice == "x":
+            run_agentic_ai_advisor(
+                clean_targets, apps_targets, bot_scripts, running_daemons
+            )
+        elif choice == "o":
+            render_hardware_inspection_view()
+        elif choice == "k":
+            interactive_ai_setup()
         elif choice == "z":
             print(
                 f"\n{NEON_YELLOW}Sentinel paused. No background changes made.{C_RESET}"
@@ -3227,6 +3284,972 @@ def cli_repair(auto_fix=True):
         )
 
 
+# ==============================================================================
+# HARDWARE CAPACITY INSPECTOR & OFFLINE OLLAMA ADVISOR
+# ==============================================================================
+AI_PROVIDERS = {
+    "tokenharbor": {
+        "id": "tokenharbor",
+        "name": "Token Harbor (OpenCode Default)",
+        "base_url": "https://tokenharbor.ai/v1",
+        "env_key": "TOKENHARBOR_API_KEY",
+        "type": "openai",
+        "models_endpoint": "/models",
+        "badge": "OPENCODE",
+        "default_models": [
+            "deepseek-v4.1-flash:free",
+            "qwen3.8-max",
+            "gemini-3.8-flash",
+            "claude-sonnet-5.5",
+            "gpt-6.1-sol",
+            "mimo-v2.6-flash:free",
+            "glm-5.3-flash",
+            "kimi-k3",
+            "qwen3.8-flash",
+            "deepseek-v4-pro",
+        ],
+    },
+    "openrouter": {
+        "id": "openrouter",
+        "name": "OpenRouter",
+        "base_url": "https://openrouter.ai/api/v1",
+        "env_key": "OPENROUTER_API_KEY",
+        "type": "openai",
+        "models_endpoint": "/models",
+        "badge": "MULTI-LLM",
+        "default_models": [
+            "deepseek/deepseek-r1",
+            "google/gemini-2.0-flash-exp:free",
+            "meta-llama/llama-3.3-70b-instruct",
+            "qwen/qwen-2.5-72b-instruct",
+            "anthropic/claude-3.5-sonnet",
+        ],
+    },
+    "gemini": {
+        "id": "gemini",
+        "name": "Google Gemini",
+        "base_url": "https://generativelanguage.googleapis.com/v1beta",
+        "env_key": "GEMINI_API_KEY",
+        "type": "gemini",
+        "models_endpoint": "/models",
+        "badge": "GOOGLE",
+        "default_models": [
+            "gemini-2.0-flash",
+            "gemini-1.5-flash",
+            "gemini-1.5-pro",
+            "gemini-2.5-flash",
+        ],
+    },
+    "groq": {
+        "id": "groq",
+        "name": "Groq Cloud (Fastest Inference)",
+        "base_url": "https://api.groq.com/openai/v1",
+        "env_key": "GROQ_API_KEY",
+        "type": "openai",
+        "models_endpoint": "/models",
+        "badge": "FASTEST",
+        "default_models": [
+            "llama-3.3-70b-versatile",
+            "llama-3.1-8b-instant",
+            "qwen-2.5-32b",
+            "deepseek-r1-distill-llama-70b",
+        ],
+    },
+    "deepseek": {
+        "id": "deepseek",
+        "name": "DeepSeek Official",
+        "base_url": "https://api.deepseek.com/v1",
+        "env_key": "DEEPSEEK_API_KEY",
+        "type": "openai",
+        "models_endpoint": "/models",
+        "badge": "REASONING",
+        "default_models": ["deepseek-chat", "deepseek-reasoner"],
+    },
+    "openai": {
+        "id": "openai",
+        "name": "OpenAI",
+        "base_url": "https://api.openai.com/v1",
+        "env_key": "OPENAI_API_KEY",
+        "type": "openai",
+        "models_endpoint": "/models",
+        "badge": "FRONTIER",
+        "default_models": ["gpt-4o", "gpt-4o-mini", "o1", "o3-mini"],
+    },
+    "anthropic": {
+        "id": "anthropic",
+        "name": "Anthropic Claude",
+        "base_url": "https://api.anthropic.com/v1",
+        "env_key": "ANTHROPIC_API_KEY",
+        "type": "anthropic",
+        "models_endpoint": "/models",
+        "badge": "AGENTIC",
+        "default_models": [
+            "claude-3-7-sonnet-20250219",
+            "claude-3-5-sonnet-20241022",
+            "claude-3-5-haiku-20241022",
+        ],
+    },
+    "mistral": {
+        "id": "mistral",
+        "name": "Mistral AI",
+        "base_url": "https://api.mistral.ai/v1",
+        "env_key": "MISTRAL_API_KEY",
+        "type": "openai",
+        "models_endpoint": "/models",
+        "badge": "OPEN-WEIGHTS",
+        "default_models": [
+            "mistral-large-latest",
+            "codestral-latest",
+            "mistral-small-latest",
+        ],
+    },
+    "ollama": {
+        "id": "ollama",
+        "name": "Ollama (Local Offline)",
+        "base_url": "http://127.0.0.1:11434",
+        "env_key": "OLLAMA_HOST",
+        "type": "ollama",
+        "models_endpoint": "/api/tags",
+        "badge": "100% OFFLINE",
+        "default_models": [
+            "qwen2.5:3b",
+            "deepseek-r1:1.5b",
+            "gemma2:2b",
+            "smollm:1.7b",
+            "llama3.2:1b",
+        ],
+    },
+}
+
+DEFAULT_AI_CONFIG = {
+    "provider": "ollama",
+    "provider_name": "Ollama (Local Offline)",
+    "base_url": "http://127.0.0.1:11434",
+    "api_key": "",
+    "model": "qwen2.5:3b",
+    "agentic_enabled": False,
+}
+
+
+def load_ai_config():
+    """Loads current AI engine configuration from disk."""
+    if not os.path.exists(AI_CONFIG_FILE):
+        return dict(DEFAULT_AI_CONFIG)
+    try:
+        with open(AI_CONFIG_FILE, encoding="utf-8") as f:
+            data = json.load(f)
+            if isinstance(data, dict):
+                return {**DEFAULT_AI_CONFIG, **data}
+    except Exception:
+        pass
+    return dict(DEFAULT_AI_CONFIG)
+
+
+def save_ai_config(cfg):
+    """Saves AI configuration securely with restricted file permissions."""
+    try:
+        os.makedirs(VAULT_DIR, exist_ok=True)
+        tmp_f = AI_CONFIG_FILE + f".tmp.{os.getpid()}"
+        with open(tmp_f, "w", encoding="utf-8") as f:
+            json.dump(cfg, f, indent=2)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp_f, AI_CONFIG_FILE)
+        if not IS_WINDOWS and hasattr(os, "chmod"):
+            try:
+                os.chmod(AI_CONFIG_FILE, 0o600)
+            except OSError:
+                pass
+    except Exception:
+        pass
+
+
+def toggle_agentic_mode():
+    """Toggles Agentic AI mode ON/OFF."""
+    cfg = load_ai_config()
+    cfg["agentic_enabled"] = not cfg.get("agentic_enabled", False)
+    save_ai_config(cfg)
+    return cfg["agentic_enabled"]
+
+
+def inspect_device_hardware():
+    """Audits local device hardware capacity and determines recommended offline models."""
+    cpu_cores = os.cpu_count() or 4
+    arch = os.uname().machine if hasattr(os, "uname") else sys.platform
+
+    ram_total_b = 0
+    ram_avail_b = 0
+    if os.path.exists("/proc/meminfo"):
+        try:
+            with open("/proc/meminfo", encoding="utf-8") as f:
+                for line in f:
+                    if line.startswith("MemTotal:"):
+                        ram_total_b = int(line.split()[1]) * 1024
+                    elif line.startswith("MemAvailable:"):
+                        ram_avail_b = int(line.split()[1]) * 1024
+        except Exception:
+            pass
+
+    if ram_total_b == 0:
+        ram_total_b = 8 * 1024 * 1024 * 1024
+        ram_avail_b = 3 * 1024 * 1024 * 1024
+
+    ram_total_gb = round(ram_total_b / (1024**3), 2)
+    ram_avail_gb = round(ram_avail_b / (1024**3), 2)
+
+    usage = shutil.disk_usage(HOME_DIR)
+    disk_free_gb = round(usage.free / (1024**3), 2)
+
+    ollama_path = shutil.which("ollama")
+    ollama_running = False
+    pulled_models = []
+    try:
+        req = urllib.request.Request(
+            "http://127.0.0.1:11434/api/tags",
+            headers={"User-Agent": "TermuxSentinel/2.0"},
+        )
+        with urllib.request.urlopen(req, timeout=1.5) as resp:
+            data = json.loads(resp.read().decode())
+            ollama_running = True
+            pulled_models = [
+                m.get("name") for m in data.get("models", []) if m.get("name")
+            ]
+    except Exception:
+        ollama_running = False
+
+    if ram_total_gb < 3.5:
+        tier_id = "ultra_compact"
+        tier_title = "TIER 1: ULTRA-COMPACT EDGE (< 4GB RAM)"
+        models = [
+            {
+                "name": "smollm:135m",
+                "size": "135M",
+                "ram": "~120 MB",
+                "desc": "Instant sub-second reasoning",
+            },
+            {
+                "name": "smollm:360m",
+                "size": "360M",
+                "ram": "~280 MB",
+                "desc": "Lightweight command interpreter",
+            },
+            {
+                "name": "qwen2.5:0.5b",
+                "size": "0.5B",
+                "ram": "~390 MB",
+                "desc": "Smallest Qwen multilingual model",
+            },
+        ]
+    elif ram_total_gb < 6.0:
+        tier_id = "compact"
+        tier_title = "TIER 2: MOBILE COMPACT (4GB - 6GB RAM)"
+        models = [
+            {
+                "name": "deepseek-r1:1.5b",
+                "size": "1.5B",
+                "ram": "~1.1 GB",
+                "desc": "Distilled reasoning core",
+            },
+            {
+                "name": "qwen2.5:1.5b",
+                "size": "1.5B",
+                "ram": "~1.2 GB",
+                "desc": "Fast scripting & JSON generation",
+            },
+            {
+                "name": "smollm:1.7b",
+                "size": "1.7B",
+                "ram": "~1.3 GB",
+                "desc": "Local instruction following",
+            },
+            {
+                "name": "llama3.2:1b",
+                "size": "1.2B",
+                "ram": "~1.3 GB",
+                "desc": "Meta edge instruction model",
+            },
+        ]
+    elif ram_total_gb < 11.0:
+        tier_id = "power_mobile"
+        tier_title = "TIER 3: POWER MOBILE / WORKSTATION (6GB - 10GB RAM)"
+        models = [
+            {
+                "name": "qwen2.5:3b",
+                "size": "3.0B",
+                "ram": "~2.1 GB",
+                "desc": "Top agentic logic, tools & Python scripts",
+            },
+            {
+                "name": "gemma2:2b",
+                "size": "2.0B",
+                "ram": "~1.6 GB",
+                "desc": "Google Gemma edge model (efficient)",
+            },
+            {
+                "name": "deepseek-r1:1.5b",
+                "size": "1.5B",
+                "ram": "~1.1 GB",
+                "desc": "DeepSeek reasoning & chain-of-thought",
+            },
+            {
+                "name": "llama3.2:3b",
+                "size": "3.2B",
+                "ram": "~2.3 GB",
+                "desc": "Meta balanced coding & writing",
+            },
+            {
+                "name": "phi3.5:3.8b",
+                "size": "3.8B",
+                "ram": "~2.5 GB",
+                "desc": "Microsoft high-efficiency mini model",
+            },
+        ]
+    else:
+        tier_id = "server"
+        tier_title = "TIER 4: HIGH-END SERVER (> 10GB RAM)"
+        models = [
+            {
+                "name": "qwen2.5:7b",
+                "size": "7.0B",
+                "ram": "~4.6 GB",
+                "desc": "Production-grade general intelligence",
+            },
+            {
+                "name": "deepseek-r1:7b",
+                "size": "7.0B",
+                "ram": "~4.8 GB",
+                "desc": "DeepSeek heavy reasoning model",
+            },
+            {
+                "name": "mistral:7b",
+                "size": "7.0B",
+                "ram": "~4.5 GB",
+                "desc": "Mistral foundational LLM",
+            },
+            {
+                "name": "gemma2:9b",
+                "size": "9.0B",
+                "ram": "~5.8 GB",
+                "desc": "Google heavy edge model",
+            },
+        ]
+
+    return {
+        "cpu_cores": cpu_cores,
+        "arch": arch,
+        "ram_total_gb": ram_total_gb,
+        "ram_avail_gb": ram_avail_gb,
+        "disk_free_gb": disk_free_gb,
+        "ollama_path": ollama_path,
+        "ollama_running": ollama_running,
+        "pulled_models": pulled_models,
+        "tier_id": tier_id,
+        "tier_title": tier_title,
+        "recommended_models": models,
+    }
+
+
+def render_hardware_inspection_view():
+    """Displays Device Hardware Capacity Audit & Offline Ollama Model Advisor."""
+    cols = get_term_cols()
+    print_large_header()
+    print_section_h2("DEVICE HARDWARE CAPACITY & OLLAMA ADVISOR", color=NEON_GREEN)
+
+    info = inspect_device_hardware()
+    print(f"\n{C_BOLD}{BRIGHT_WHITE}HARDWARE AUDIT TELEMETRY:{C_RESET}")
+    print(
+        f"  CPU Platform : {NEON_CYAN}{info['arch']}{C_RESET} ({info['cpu_cores']} Cores)"
+    )
+    print(
+        f"  RAM Memory   : Total: {NEON_YELLOW}{info['ram_total_gb']} GB{C_RESET} | Available: {NEON_GREEN}{info['ram_avail_gb']} GB{C_RESET}"
+    )
+    print(
+        f"  Disk Storage : Free Space: {NEON_GREEN}{info['disk_free_gb']} GB{C_RESET}"
+    )
+
+    ollama_stat = (
+        f"{NEON_GREEN}● Running on port 11434{C_RESET}"
+        if info["ollama_running"]
+        else f"{NEON_YELLOW}○ Inactive (Binary: {info['ollama_path'] or 'Not in PATH'}){C_RESET}"
+    )
+    print(f"  Ollama Daemon: {ollama_stat}")
+    if info["pulled_models"]:
+        print(
+            f"  Local Models : {NEON_CYAN}{', '.join(info['pulled_models'][:4])}{C_RESET}"
+        )
+    else:
+        print(f"  Local Models : {TEXT_MUTED}None downloaded yet{C_RESET}")
+
+    print(
+        f"\n{C_BOLD}{NEON_PINK}CAPACITY CLASSIFICATION:{C_RESET} {BRIGHT_WHITE}{info['tier_title']}{C_RESET}"
+    )
+    print(
+        f"\n{C_BOLD}{BRIGHT_WHITE}RECOMMENDED OFFLINE MODELS TO PULL:{C_RESET}"
+    )
+
+    for idx, m in enumerate(info["recommended_models"], 1):
+        is_pulled = any(m["name"].split(":")[0] in pm for pm in info["pulled_models"])
+        badge = (
+            f"{BADGE_GREEN} INSTALLED {C_RESET}"
+            if is_pulled
+            else f"{BADGE_CYAN} READY {C_RESET}"
+        )
+        print(
+            f"  [{idx}] {badge} {BRIGHT_WHITE}{m['name']:<18}{C_RESET} {NEON_YELLOW}{m['ram']:<10}{C_RESET} {TEXT_MUTED}{m['desc']}{C_RESET}"
+        )
+
+    print(
+        f"\n{NEON_CYAN}╔═ ACTIONS ═════════════════════════════════════════════╗{C_RESET}"
+    )
+    print(
+        make_box_row(
+            f"{NEON_YELLOW}[1-{len(info['recommended_models'])}]{C_RESET} Pull Model    {NEON_GREEN}[s]{C_RESET} Start Ollama Daemon",
+            border_color=NEON_CYAN,
+            cols=cols,
+        )
+    )
+    print(
+        make_box_row(
+            f"{NEON_CYAN}[c]{C_RESET} Pull Custom Model {NEON_BLUE}[b]{C_RESET} Back to Sentinel",
+            border_color=NEON_CYAN,
+            cols=cols,
+        )
+    )
+    print(f"{NEON_CYAN}╚═══════════════════════════════════════════════════════╝{C_RESET}")
+
+    try:
+        act = (
+            input(
+                f"\n{BG_CHARCOAL}{C_BOLD}{NEON_GREEN} Hardware Inspector ❯ {C_RESET}"
+            )
+            .strip()
+            .lower()
+        )
+    except (KeyboardInterrupt, EOFError):
+        return
+
+    if not act or act == "b":
+        return
+
+    if act == "s":
+        if not info["ollama_path"]:
+            print(
+                f"\n{NEON_RED}Ollama is not installed. Install via: pkg install ollama{C_RESET}"
+            )
+            time.sleep(2.0)
+            return
+        animate_safe(
+            "STARTING", "Launching Ollama daemon in background...", duration=0.8
+        )
+        log_p = os.path.join(VAULT_DIR, "ollama.log")
+        subprocess.Popen(
+            ["ollama", "serve"],
+            stdout=open(log_p, "a", encoding="utf-8"),
+            stderr=subprocess.STDOUT,
+        )
+        time.sleep(2.0)
+        render_hardware_inspection_view()
+        return
+
+    target_model = None
+    if act.isdigit():
+        choice_idx = int(act) - 1
+        if 0 <= choice_idx < len(info["recommended_models"]):
+            target_model = info["recommended_models"][choice_idx]["name"]
+    elif act == "c":
+        try:
+            target_model = input(
+                f"{NEON_CYAN}Enter model tag to pull (e.g. qwen2.5:3b): {C_RESET}"
+            ).strip()
+        except (KeyboardInterrupt, EOFError):
+            return
+
+    if target_model:
+        if not info["ollama_path"]:
+            print(
+                f"\n{NEON_RED}Ollama CLI is required to pull models. Install via: pkg install ollama{C_RESET}"
+            )
+            time.sleep(2.0)
+            return
+        print(
+            f"\n{NEON_CYAN}Starting pull for {BRIGHT_WHITE}{target_model}{NEON_CYAN}...{C_RESET}"
+        )
+        try:
+            subprocess.run(["ollama", "pull", target_model], check=True)
+            cfg = load_ai_config()
+            cfg["provider"] = "ollama"
+            cfg["provider_name"] = "Ollama (Local Offline)"
+            cfg["model"] = target_model
+            cfg["base_url"] = "http://127.0.0.1:11434"
+            cfg["agentic_enabled"] = True
+            save_ai_config(cfg)
+            print(
+                f"\n{NEON_GREEN}✓ Successfully pulled {target_model} and set as active Agentic AI!{C_RESET}"
+            )
+            input(f"\n{C_BOLD}Press Enter to continue...{C_RESET}")
+        except Exception as e:
+            print(f"\n{NEON_RED}Pull error: {e}{C_RESET}")
+            time.sleep(2.0)
+
+
+def validate_and_sync_models(provider_id, api_key):
+    """Validates API credentials with the provider and fetches live model list."""
+    p_info = AI_PROVIDERS.get(provider_id)
+    if not p_info:
+        return False, "Unknown provider ID", []
+
+    base_url = p_info["base_url"]
+    p_type = p_info["type"]
+    headers = {"User-Agent": "TermuxSentinel/2.0"}
+
+    if p_type == "ollama":
+        url = f"{base_url}/api/tags"
+    elif p_type == "gemini":
+        url = f"{base_url}/models?key={api_key}"
+    elif p_type == "anthropic":
+        url = f"{base_url}/models"
+        headers["x-api-key"] = api_key
+        headers["anthropic-version"] = "2023-06-01"
+    else:
+        url = f"{base_url}/models"
+        headers["Authorization"] = f"Bearer {api_key}"
+
+    try:
+        req = urllib.request.Request(url, headers=headers)
+        with urllib.request.urlopen(req, timeout=8.0) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+            live_models = []
+            if p_type == "gemini":
+                for m in data.get("models", []):
+                    name = m.get("name", "").replace("models/", "")
+                    if name:
+                        live_models.append(name)
+            elif p_type == "ollama":
+                for m in data.get("models", []):
+                    name = m.get("name")
+                    if name:
+                        live_models.append(name)
+            else:
+                for m in data.get("data", []):
+                    name = m.get("id")
+                    if name:
+                        live_models.append(name)
+
+            if not live_models:
+                live_models = list(p_info.get("default_models", []))
+            return True, "", live_models
+    except urllib.error.HTTPError as e:
+        if e.code in (401, 403):
+            return False, f"Authentication Failed (HTTP {e.code}): Invalid API key", []
+        elif e.code == 404:
+            return True, "", list(p_info.get("default_models", []))
+        return False, f"Provider Error (HTTP {e.code})", []
+    except Exception as e:
+        if p_type == "ollama":
+            return (
+                False,
+                "Could not connect to Ollama on http://127.0.0.1:11434 (Server not running)",
+                [],
+            )
+        return False, f"Connection Failed: {e}", []
+
+
+def interactive_ai_setup():
+    """Interactive AI Provider selection and Live Sync Model Selector replicating OpenCode AI TUI."""
+    cols = get_term_cols()
+    print_large_header()
+    print_section_h2("AI PROVIDERS & LIVE SYNC MODEL SELECTOR", color=NEON_PINK)
+
+    providers_list = list(AI_PROVIDERS.values())
+    print(f"\n{C_BOLD}{BRIGHT_WHITE}SELECT AI PROVIDER:{C_RESET}\n")
+
+    cfg = load_ai_config()
+    current_pid = cfg.get("provider", "")
+
+    for idx, p in enumerate(providers_list, 1):
+        is_curr = p["id"] == current_pid
+        badge = (
+            f"{BADGE_GREEN} ACTIVE {C_RESET}"
+            if is_curr
+            else f"{BADGE_CYAN} {p['badge']} {C_RESET}"
+        )
+        print(f"  [{idx:2d}] {badge} {BRIGHT_WHITE}{p['name']:<32}{C_RESET}")
+
+    print(f"\n  {TEXT_MUTED}[b] Back to Sentinel{C_RESET}")
+
+    try:
+        p_choice = (
+            input(
+                f"\n{BG_CHARCOAL}{C_BOLD}{NEON_CYAN} Select Provider [1-{len(providers_list)}] ❯ {C_RESET}"
+            )
+            .strip()
+            .lower()
+        )
+    except (KeyboardInterrupt, EOFError):
+        return
+
+    if not p_choice or p_choice == "b":
+        return
+
+    if not p_choice.isdigit() or not (1 <= int(p_choice) <= len(providers_list)):
+        print(f"{NEON_RED}Invalid provider selection.{C_RESET}")
+        time.sleep(1.0)
+        return
+
+    sel_provider = providers_list[int(p_choice) - 1]
+    p_id = sel_provider["id"]
+
+    api_key = ""
+    if p_id != "ollama":
+        env_val = os.environ.get(sel_provider["env_key"], "")
+        if env_val:
+            masked_env = (
+                env_val[:4] + "*" * max(0, len(env_val) - 8) + env_val[-4:]
+                if len(env_val) > 8
+                else "***"
+            )
+            print(
+                f"\n{NEON_GREEN}Detected {sel_provider['env_key']} in environment: {masked_env}{C_RESET}"
+            )
+            try:
+                use_env = input("Use this environment key? (Y/n): ").strip().lower()
+            except (KeyboardInterrupt, EOFError):
+                return
+            if use_env in ("", "y", "yes"):
+                api_key = env_val
+
+        if not api_key:
+            print(
+                f"\n{C_BOLD}{BRIGHT_WHITE}Paste API Key for {sel_provider['name']}:{C_RESET}"
+            )
+            try:
+                api_key = input("❯ ").strip()
+            except (KeyboardInterrupt, EOFError):
+                return
+            if not api_key:
+                print(f"{NEON_YELLOW}Setup cancelled. No key entered.{C_RESET}")
+                time.sleep(1.0)
+                return
+
+    animate_safe(
+        "VALIDATING",
+        f"Connecting & authenticating with {sel_provider['name']}...",
+        duration=0.8,
+    )
+    ok, err, live_models = validate_and_sync_models(p_id, api_key)
+
+    if not ok:
+        print(f"\n{BADGE_RED} VALIDATION FAILED {C_RESET} {NEON_RED}{err}{C_RESET}")
+        time.sleep(2.0)
+        return
+
+    print(
+        f"\n{BADGE_GREEN} VALIDATED {C_RESET} {NEON_GREEN}Credentials verified! Synced {len(live_models)} models.{C_RESET}\n"
+    )
+
+    print_divider_h3(f"AVAILABLE MODELS ({sel_provider['name']})", color=NEON_GREEN)
+    active_m = cfg.get("model", "")
+
+    display_models = live_models[:25]
+    for m_idx, m_name in enumerate(display_models, 1):
+        is_active = m_name == active_m
+        tag = f"{BADGE_GREEN} ACTIVE {C_RESET}" if is_active else "     "
+        print(f"  [{m_idx:2d}] {tag} {BRIGHT_WHITE}{m_name}{C_RESET}")
+
+    if len(live_models) > 25:
+        print(f"  {TEXT_MUTED}... and {len(live_models) - 25} more models{C_RESET}")
+
+    try:
+        m_choice = input(
+            f"\n{BG_CHARCOAL}{C_BOLD}{NEON_GREEN} Select Model [1-{len(display_models)}] ❯ {C_RESET}"
+        ).strip()
+    except (KeyboardInterrupt, EOFError):
+        return
+
+    if not m_choice:
+        return
+
+    if m_choice.isdigit() and 1 <= int(m_choice) <= len(display_models):
+        chosen_model = display_models[int(m_choice) - 1]
+    else:
+        chosen_model = m_choice.strip()
+
+    new_cfg = {
+        "provider": p_id,
+        "provider_name": sel_provider["name"],
+        "base_url": sel_provider["base_url"],
+        "api_key": api_key,
+        "model": chosen_model,
+        "agentic_enabled": True,
+        "last_validated": time.strftime("%Y-%m-%d %H:%M"),
+    }
+    save_ai_config(new_cfg)
+
+    dopbase_bin = shutil.which("dopbase")
+    if dopbase_bin and api_key:
+        try:
+            subprocess.run(
+                [
+                    dopbase_bin,
+                    "secret",
+                    "set",
+                    "termux_sentinel/prod",
+                    sel_provider["env_key"],
+                    "--stdin",
+                ],
+                input=api_key.encode("utf-8"),
+                check=False,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+        except Exception:
+            pass
+
+    print(
+        f"\n{NEON_GREEN}✓ Active AI Model configured: {BRIGHT_WHITE}{chosen_model}{NEON_GREEN} ({sel_provider['name']}){C_RESET}"
+    )
+    print(f"{NEON_GREEN}✓ Agentic AI Mode is now ONLINE!{C_RESET}\n")
+    time.sleep(1.5)
+
+
+def query_agentic_ai(prompt, system_prompt=None):
+    """Executes an AI inference request using configured local Ollama or cloud provider."""
+    cfg = load_ai_config()
+    p_id = cfg.get("provider", "ollama")
+    p_info = AI_PROVIDERS.get(p_id, AI_PROVIDERS["ollama"])
+    base_url = cfg.get("base_url", p_info["base_url"])
+    model = cfg.get("model", "qwen2.5:3b")
+    api_key = cfg.get("api_key", "")
+    p_type = p_info["type"]
+
+    sys_content = (
+        system_prompt
+        or "You are Termux Sentinel Autonomous AI Agent. Keep responses concise, actionable, and strictly under 150 words."
+    )
+
+    try:
+        if p_type == "gemini":
+            url = f"{base_url}/models/{model}:generateContent?key={api_key}"
+            payload = json.dumps(
+                {
+                    "contents": [{"parts": [{"text": f"{sys_content}\n\n{prompt}"}]}],
+                    "generationConfig": {"temperature": 0.3, "maxOutputTokens": 600},
+                }
+            ).encode("utf-8")
+            req = urllib.request.Request(
+                url,
+                data=payload,
+                headers={
+                    "Content-Type": "application/json",
+                    "User-Agent": "TermuxSentinel/2.0",
+                },
+            )
+            with urllib.request.urlopen(req, timeout=25.0) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+                return data["candidates"][0]["content"]["parts"][0]["text"].strip()
+        elif p_type == "anthropic":
+            url = f"{base_url}/messages"
+            payload = json.dumps(
+                {
+                    "model": model,
+                    "system": sys_content,
+                    "messages": [{"role": "user", "content": prompt}],
+                    "max_tokens": 600,
+                }
+            ).encode("utf-8")
+            req = urllib.request.Request(
+                url,
+                data=payload,
+                headers={
+                    "Content-Type": "application/json",
+                    "x-api-key": api_key,
+                    "anthropic-version": "2023-06-01",
+                    "User-Agent": "TermuxSentinel/2.0",
+                },
+            )
+            with urllib.request.urlopen(req, timeout=25.0) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+                return data["content"][0]["text"].strip()
+        elif p_type == "ollama":
+            url = f"{base_url}/api/generate"
+            payload = json.dumps(
+                {
+                    "model": model,
+                    "prompt": f"{sys_content}\n\nUser Question:\n{prompt}\n\nResponse:",
+                    "stream": False,
+                }
+            ).encode("utf-8")
+            req = urllib.request.Request(
+                url,
+                data=payload,
+                headers={
+                    "Content-Type": "application/json",
+                    "User-Agent": "TermuxSentinel/2.0",
+                },
+            )
+            with urllib.request.urlopen(req, timeout=30.0) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+                return data.get("response", "").strip()
+        else:
+            url = f"{base_url}/chat/completions"
+            payload = json.dumps(
+                {
+                    "model": model,
+                    "messages": [
+                        {"role": "system", "content": sys_content},
+                        {"role": "user", "content": prompt},
+                    ],
+                    "temperature": 0.3,
+                    "max_tokens": 600,
+                }
+            ).encode("utf-8")
+            req = urllib.request.Request(
+                url,
+                data=payload,
+                headers={
+                    "Content-Type": "application/json",
+                    "Authorization": f"Bearer {api_key}",
+                    "User-Agent": "TermuxSentinel/2.0",
+                },
+            )
+            with urllib.request.urlopen(req, timeout=25.0) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+                return data["choices"][0]["message"]["content"].strip()
+    except Exception as e:
+        return f"Inference Failed ({p_info['name']}): {e}"
+
+
+def run_agentic_ai_advisor(
+    clean_targets=None, apps_targets=None, bot_scripts=None, running_daemons=None
+):
+    """Feeds live system telemetry into the AI engine to generate an intelligent maintenance plan."""
+    cols = get_term_cols()
+    print_large_header()
+    print_section_h2(
+        "AGENTIC AI SYSTEM ADVISOR & AUTONOMOUS PLANNER", color=NEON_PINK
+    )
+
+    cfg = load_ai_config()
+    print(
+        f" Active Model: {NEON_GREEN}{cfg.get('model', 'None')}{C_RESET} ({cfg.get('provider_name', 'Ollama')})"
+    )
+
+    used, total, free, pct = get_disk_usage()
+    if clean_targets is None:
+        clean_targets = define_cleaning_targets()
+    if running_daemons is None:
+        running_daemons = scan_running_daemons()
+    if bot_scripts is None:
+        bot_scripts = scan_bot_scripts()
+
+    reclaim_b = sum([t.get("size_bytes", 0) for t in clean_targets])
+    top_clean = ", ".join(
+        [
+            f"{t['name']} ({human_size(t.get('size_bytes', 0))})"
+            for t in clean_targets
+            if t.get("size_bytes", 0) > 0
+        ][:3]
+    )
+    daemon_summary = (
+        ", ".join([d.get("dtype", "Worker") for d in running_daemons[:3]]) or "None"
+    )
+
+    context_prompt = (
+        f"Device: {get_device_name()}\n"
+        f"Storage: {used} used / {free} free of {total} ({pct} full)\n"
+        f"Cleanable Caches: {human_size(reclaim_b)} across {len(clean_targets)} targets ({top_clean})\n"
+        f"Background Daemons: {len(running_daemons)} detected ({daemon_summary})\n\n"
+        f"Provide a concise, 3-point bullet action plan for maintenance. "
+        f"Explain what is safest to purge and any warnings for active daemons."
+    )
+
+    animate_safe(
+        "REASONING",
+        "Agentic AI analyzing system telemetry & formulating plan...",
+        duration=0.8,
+    )
+    advice = query_agentic_ai(context_prompt)
+
+    print(f"\n{NEON_CYAN}╔═ 🤖 AGENTIC AI ACTION PLAN ══════════════════════════╗{C_RESET}")
+    for line in advice.splitlines():
+        if line.strip():
+            print(f"  {BRIGHT_WHITE}{line}{C_RESET}")
+    print(f"{NEON_CYAN}╚═══════════════════════════════════════════════════════╝{C_RESET}")
+
+    print(
+        f"\n{C_BOLD}{BRIGHT_WHITE}Execute recommended safe system cleanup now? (y/N): {C_RESET}",
+        end="",
+    )
+    try:
+        conf = input().strip().lower()
+    except (KeyboardInterrupt, EOFError):
+        return
+    if conf in ("y", "yes"):
+        cli_clean(safe_only=True, dry_run=False, auto_yes=True)
+    else:
+        print(f"\n{NEON_YELLOW}Cleanup skipped by user.{C_RESET}\n")
+    input(f"{C_BOLD}Press Enter to return...{C_RESET}")
+
+
+def cli_ai(action="menu", *args):
+    """CLI subcommand router for Sentinel AI features."""
+    if action in ("inspect", "hardware", "hw"):
+        render_hardware_inspection_view()
+    elif action in ("setup", "config", "providers", "provider"):
+        interactive_ai_setup()
+    elif action in ("toggle", "switch"):
+        new_s = toggle_agentic_mode()
+        print(
+            f"{NEON_GREEN if new_s else NEON_YELLOW}Agentic AI Mode is now {'ENABLED' if new_s else 'DISABLED'}.{C_RESET}"
+        )
+    elif action in ("advise", "plan", "analyze"):
+        run_agentic_ai_advisor()
+    elif (
+        action in ("ask", "query")
+        or args
+        or (action not in ("menu", "status", "info"))
+    ):
+        prompt = (
+            " ".join([action] + list(args)) if action != "ask" else " ".join(args)
+        )
+        cfg = load_ai_config()
+        print(f"\n{NEON_CYAN}[AI Query] {BRIGHT_WHITE}{prompt}{C_RESET}")
+        print(
+            f"{TEXT_MUTED}Model: {cfg.get('model')} ({cfg.get('provider_name')}){C_RESET}\n"
+        )
+        resp = query_agentic_ai(prompt)
+        print(f"{BRIGHT_WHITE}{resp}{C_RESET}\n")
+    else:
+        cfg = load_ai_config()
+        print_large_header()
+        print_section_h2("SENTINEL AGENTIC AI STATUS", color=NEON_PINK)
+        mode_str = (
+            f"{BADGE_GREEN} ONLINE {C_RESET}"
+            if cfg.get("agentic_enabled")
+            else f"{BADGE_YELLOW} MANUAL MODE (OFFLINE) {C_RESET}"
+        )
+        print(f"  Agent Status : {mode_str}")
+        print(f"  Provider     : {NEON_CYAN}{cfg.get('provider_name', 'Ollama')}{C_RESET}")
+        print(f"  Active Model : {NEON_GREEN}{cfg.get('model', 'None')}{C_RESET}")
+        print(f"  Endpoint URL : {TEXT_MUTED}{cfg.get('base_url', 'N/A')}{C_RESET}")
+        print(f"\n{C_BOLD}{BRIGHT_WHITE}AI SUBCOMMANDS:{C_RESET}")
+        print(
+            f"  {NEON_YELLOW}sentinel ai inspect  {C_RESET} {TEXT_MUTED}Audit Device & Suggest Ollama Models{C_RESET}"
+        )
+        print(
+            f"  {NEON_YELLOW}sentinel ai setup    {C_RESET} {TEXT_MUTED}Configure Cloud/Local Provider & Sync{C_RESET}"
+        )
+        print(
+            f"  {NEON_YELLOW}sentinel ai toggle   {C_RESET} {TEXT_MUTED}Toggle Agentic AI Mode ON/OFF{C_RESET}"
+        )
+        print(
+            f"  {NEON_YELLOW}sentinel ai advise   {C_RESET} {TEXT_MUTED}Run Autonomous System Optimization Plan{C_RESET}"
+        )
+        print(
+            f"  {NEON_YELLOW}sentinel ai \"query\"  {C_RESET} {TEXT_MUTED}Ask AI Agent with System Telemetry{C_RESET}\n"
+        )
+
+
 def cli_help():
     cols = get_term_cols()
     print_large_header()
@@ -3268,6 +4291,11 @@ def cli_help():
         ("sentinel doctor", "System Health Check"),
         ("sentinel repair", "Auto-Fix Broken Apps & Deps"),
         ("sentinel heal", "Self-Healing & Rescue Engine"),
+        ("sentinel ai", "Agentic AI Menu & Status"),
+        ("sentinel ai setup", "AI Provider & Live Sync"),
+        ("sentinel ai inspect", "Hardware & Offline Models"),
+        ("sentinel ai toggle", "Toggle AI Mode (ON/OFF)"),
+        ("sentinel ai advise", "AI Autonomous System Plan"),
         ("sentinel help", "CLI Command Manual"),
     ]
 
@@ -3351,6 +4379,10 @@ def cli_entrypoint():
         cli_repair(auto_fix=auto_fix)
     elif cmd in ("heal", "self-heal", "selfheal", "rescue"):
         self_heal_sentinel(silent=False)
+    elif cmd in ("ai", "agent", "llm"):
+        sub = sys.argv[2].lower() if len(sys.argv) > 2 else "menu"
+        extra = sys.argv[3:] if len(sys.argv) > 3 else []
+        cli_ai(sub, *extra)
     elif cmd in ("update", "upgrade"):
         cli_update()
     elif cmd in ("help", "-h", "--help"):
