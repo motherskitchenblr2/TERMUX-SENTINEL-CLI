@@ -47,12 +47,39 @@ BADGE_YELLOW = f"{C_BOLD}\033[48;5;226m\033[38;5;232m"
 
 ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
 
+IS_WINDOWS = sys.platform == "win32"
+IS_TERMUX = os.path.exists("/data/data/com.termux/files/usr/bin") or "TERMUX_VERSION" in os.environ
+
+HOME_DIR = os.path.expanduser("~")
+if IS_WINDOWS:
+    _appdata = os.environ.get("APPDATA") or os.path.join(HOME_DIR, "AppData", "Roaming")
+    VAULT_DIR = os.path.join(_appdata, "termux_sentinel")
+else:
+    VAULT_DIR = os.path.join(HOME_DIR, ".config", "termux_sentinel")
+VAULT_FILE = os.path.join(VAULT_DIR, "vault.json")
 UBUNTU_ROOT = (
     "/data/data/com.termux/files/usr/var/lib/proot-distro/containers/ubuntu/rootfs"
+    if IS_TERMUX
+    else "/"
 )
-HOME_DIR = "/data/data/com.termux/files/home"
-VAULT_DIR = os.path.join(HOME_DIR, ".config", "termux_sentinel")
-VAULT_FILE = os.path.join(VAULT_DIR, "vault.json")
+
+
+def init_windows_terminal():
+    """Enables ANSI escape sequence processing in legacy Windows consoles."""
+    if IS_WINDOWS:
+        try:
+            import ctypes
+
+            kernel32 = ctypes.windll.kernel32
+            handle = kernel32.GetStdHandle(-11)  # STD_OUTPUT_HANDLE
+            mode = ctypes.c_ulong()
+            if kernel32.GetConsoleMode(handle, ctypes.byref(mode)):
+                kernel32.SetConsoleMode(handle, mode.value | 0x0004)
+        except Exception:
+            pass
+
+
+init_windows_terminal()
 
 # Core hardcoded safety keywords that can NEVER be touched or bypassed
 CORE_SAFETY_KEYWORDS = [
@@ -61,6 +88,7 @@ CORE_SAFETY_KEYWORDS = [
     "protected_workspace",
     "cloud_backup",
     "remote_backup",
+    "desktop",
 ]
 
 DEFAULT_VAULT_ITEMS = [
@@ -101,6 +129,14 @@ DEFAULT_VAULT_ITEMS = [
         "name": "Secondary Cloud Target",
         "pattern": "Remote_Backup",
         "type": "Cloud Target",
+        "locked": True,
+        "date_added": "Default Core Shield",
+    },
+    {
+        "id": 6,
+        "name": "Desktop & Work Files",
+        "pattern": "Desktop",
+        "type": "Desktop Scope",
         "locked": True,
         "date_added": "Default Core Shield",
     },
@@ -206,13 +242,13 @@ def is_protected(path):
 
 
 # ==============================================================================
-# TERMINAL GEOMETRY & FORMATTING HELPERS (Mobile Clamped 44 Cols)
+# TERMINAL GEOMETRY & FORMATTING HELPERS (Responsive Mobile to Wide Desktop)
 # ==============================================================================
-def get_term_cols():
-    """Returns terminal columns clamped for clean mobile portrait rendering."""
+def get_term_cols(max_cols=120):
+    """Returns responsive terminal columns adapted for mobile portrait (min 44) or wide desktop (up to 120)."""
     try:
         cols = shutil.get_terminal_size((44, 24)).columns
-        return min(max(cols, 40), 44)
+        return min(max(cols, 44), max_cols)
     except Exception:
         return 44
 
@@ -264,10 +300,10 @@ COLOR_X = "\033[38;5;141;1m"  # Royal Neon Purple
 def render_3d_banner(border_color=NEON_CYAN, title_color=None, colorful=True):
     """Renders the responsive Cyber Termux-Sentinel banner with shape-lock guarantee."""
     target_cols = get_term_cols()
-    c = min(max(target_cols, 40), 44)
+    c = target_cols
     inner = c - 2
-    pad_left = (inner - 38) // 2
-    pad_right = inner - 38 - pad_left
+    pad_left = max(0, (inner - 38) // 2)
+    pad_right = max(0, inner - 38 - pad_left)
 
     top = f"{border_color}╔" + "═" * inner + f"╗{C_RESET}"
     bot = f"{border_color}╚" + "═" * inner + f"╝{C_RESET}"
@@ -429,11 +465,12 @@ def get_dir_size(path):
 
 
 def get_disk_usage():
+    """Cross-platform disk usage retrieval using standard library shutil."""
     try:
-        stat = os.statvfs(HOME_DIR)
-        total = stat.f_blocks * stat.f_frsize
-        free = stat.f_bavail * stat.f_frsize
-        used = total - free
+        usage = shutil.disk_usage(HOME_DIR)
+        total = usage.total
+        free = usage.free
+        used = usage.used
         pct = (used / total) * 100 if total > 0 else 0
         return human_size(used), human_size(total), human_size(free), f"{pct:.1f}%"
     except Exception:
@@ -441,55 +478,78 @@ def get_disk_usage():
 
 
 def check_storage_threshold(min_gb=5.0):
-    """Returns (is_critical, free_gb) based on available disk space in Termux."""
+    """Returns (is_critical, free_gb) based on available disk space."""
     try:
-        stat = os.statvfs(HOME_DIR)
-        free_bytes = stat.f_bavail * stat.f_frsize
-        free_gb = free_bytes / (1024**3)
+        usage = shutil.disk_usage(HOME_DIR)
+        free_gb = usage.free / (1024**3)
         return free_gb < min_gb, round(free_gb, 2)
     except Exception:
         return False, 999.0
 
 
 def get_device_name():
-    """Detects current mobile device brand & model dynamically."""
+    """Detects current mobile device brand, Windows PC, or Linux distro dynamically."""
+    if IS_WINDOWS:
+        try:
+            import platform
+
+            rel = platform.release()
+            return f"WINDOWS {rel} WORKSTATION"
+        except Exception:
+            return "WINDOWS PC"
+
+    if IS_TERMUX:
+        try:
+            getprop_bin = shutil.which("getprop") or "/system/bin/getprop"
+            brand = (
+                subprocess.check_output(  # nosec B603
+                    [getprop_bin, "ro.product.brand"], text=True, stderr=subprocess.DEVNULL
+                )
+                .strip()
+                .upper()
+            )
+            model = (
+                subprocess.check_output(  # nosec B603
+                    [getprop_bin, "ro.product.model"], text=True, stderr=subprocess.DEVNULL
+                )
+                .strip()
+                .upper()
+            )
+            if "REALME" in brand or "RMX" in model:
+                return "REALME 12 PRO+"
+            elif "NOTHING" in brand or "CMF" in brand or "A015" in model:
+                return "CMF PHONE 1 (NOTHING)"
+            if brand:
+                return f"{brand} {model}"[:24]
+        except (OSError, subprocess.SubprocessError):
+            pass
+        return "TERMUX SENTINEL"
+
+    # Standard Linux / Ubuntu
     try:
-        getprop_bin = shutil.which("getprop") or "/system/bin/getprop"
-        brand = (
-            subprocess.check_output(  # nosec B603
-                [getprop_bin, "ro.product.brand"], text=True, stderr=subprocess.DEVNULL
-            )
-            .strip()
-            .upper()
-        )
-        model = (
-            subprocess.check_output(  # nosec B603
-                [getprop_bin, "ro.product.model"], text=True, stderr=subprocess.DEVNULL
-            )
-            .strip()
-            .upper()
-        )
-        if "REALME" in brand or "RMX" in model:
-            return "REALME 12 PRO+"
-        elif "NOTHING" in brand or "CMF" in brand or "A015" in model:
-            return "CMF PHONE 1 (NOTHING)"
-        if brand:
-            return f"{brand} {model}"[:20]
-    except (OSError, subprocess.SubprocessError):
+        if os.path.exists("/etc/os-release"):
+            with open("/etc/os-release", encoding="utf-8") as f:
+                for line in f:
+                    if line.startswith("PRETTY_NAME="):
+                        val = line.split("=", 1)[1].strip().strip('"')
+                        return val.upper()[:24]
+    except Exception:
         pass
-    return "TERMUX SENTINEL"
+
+    return sys.platform.upper() + " SENTINEL"
 
 
 # ==============================================================================
-# NEON BORDER UI CONTAINERS & HEADERS
+# NEON BORDER UI CONTAINERS & HEADERS (Mobile & Wide-Screen Desktop Adaptive)
 # ==============================================================================
 def render_hud_box(_view_name="DASHBOARD"):
-    """All-Around Neon Border HUD Box (Mobile Clamped to 44 columns)."""
+    """Responsive Neon Border HUD Box (Mobile Clamped to 44, Wide Grid on Desktop >= 80)."""
     cols = get_term_cols()
     used, _total, free, pct = get_disk_usage()
     vault_items = load_vault()
     vault_count = len(vault_items)
     dev_name = get_device_name()
+    is_crit, free_gb = check_storage_threshold(min_gb=5.0)
 
     title = f"═ {dev_name} HUD "
     if visible_len(title) > cols - 6:
@@ -498,17 +558,64 @@ def render_hud_box(_view_name="DASHBOARD"):
     top = f"{NEON_CYAN}╔{title}" + "═" * fill + f"╗{C_RESET}"
     bot = f"{NEON_CYAN}╚" + "═" * (cols - 2) + f"╝{C_RESET}"
 
-    r1 = f"Used: {NEON_YELLOW}{used}{C_RESET} | Free: {NEON_GREEN}{free}{C_RESET} ({pct})"
-    r2 = f"Vault: {NEON_GREEN}{vault_count} Active Shields [v]{C_RESET}"
-    is_crit, free_gb = check_storage_threshold(min_gb=5.0)
+    if cols >= 80:
+        # Wide Screen Dual-Pane Grid
+        mid_col = (cols - 3) // 2
+        left_w = mid_col - 2
+        right_w = cols - mid_col - 5
 
-    print(top)
-    print(make_box_row(r1, border_color=NEON_CYAN, cols=cols))
-    print(make_box_row(r2, border_color=NEON_CYAN, cols=cols))
-    if is_crit:
-        r_warn = f"{NEON_RED}⚠️ CRITICAL SPACE: {free_gb} GB FREE! [sentinel clean -y]{C_RESET}"
-        print(make_box_row(r_warn, border_color=NEON_RED, cols=cols))
-    print(bot)
+        row1_l = f"Storage: {NEON_YELLOW}{used}{C_RESET} / {NEON_GREEN}{free} Free{C_RESET} ({pct})"
+        row1_r = f"Vault: {NEON_GREEN}{vault_count} Active Shields [v]{C_RESET}"
+        pad_l1 = max(0, left_w - visible_len(row1_l))
+        pad_r1 = max(0, right_w - visible_len(row1_r))
+        grid_row1 = f"{NEON_CYAN}║{C_RESET} {row1_l}{' ' * pad_l1} {NEON_CYAN}║{C_RESET} {row1_r}{' ' * pad_r1} {NEON_CYAN}║{C_RESET}"
+
+        status_lbl = (
+            f"Status: {NEON_RED}CRITICAL SPACE ({free_gb} GB){C_RESET}"
+            if is_crit
+            else f"Status: {NEON_GREEN}SYSTEM HEALTH OPTIMAL{C_RESET}"
+        )
+        mode_lbl = f"Workstation: {NEON_CYAN}{dev_name}{C_RESET}"
+        pad_l2 = max(0, left_w - visible_len(status_lbl))
+        pad_r2 = max(0, right_w - visible_len(mode_lbl))
+        grid_row2 = f"{NEON_CYAN}║{C_RESET} {status_lbl}{' ' * pad_l2} {NEON_CYAN}║{C_RESET} {mode_lbl}{' ' * pad_r2} {NEON_CYAN}║{C_RESET}"
+
+        print(top)
+        print(grid_row1)
+        print(grid_row2)
+        print(bot)
+    else:
+        # Mobile Compact Stack
+        r1 = f"Used: {NEON_YELLOW}{used}{C_RESET} | Free: {NEON_GREEN}{free}{C_RESET} ({pct})"
+        r2 = f"Vault: {NEON_GREEN}{vault_count} Active Shields [v]{C_RESET}"
+
+        print(top)
+        print(make_box_row(r1, border_color=NEON_CYAN, cols=cols))
+        print(make_box_row(r2, border_color=NEON_CYAN, cols=cols))
+        if is_crit:
+            r_warn = f"{NEON_RED}⚠️ CRITICAL SPACE: {free_gb} GB FREE! [sentinel clean -y]{C_RESET}"
+            print(make_box_row(r_warn, border_color=NEON_RED, cols=cols))
+        print(bot)
+
+
+def kill_process_pid(pid):
+    """Cross-platform safe process termination (Windows taskkill vs POSIX kill)."""
+    try:
+        p_int = int(pid)
+        if IS_WINDOWS:
+            subprocess.run(
+                ["taskkill", "/F", "/PID", str(p_int)],
+                check=False,
+                stderr=subprocess.DEVNULL,
+            )
+            return True
+        else:
+            os.kill(p_int, signal.SIGTERM)
+            time.sleep(0.2)
+            os.kill(p_int, signal.SIGKILL)
+            return True
+    except Exception:
+        return False
 
 
 def print_section_h2(title, color=NEON_CYAN):
@@ -870,49 +977,114 @@ def define_installed_apps():
 
 
 def define_update_targets():
-    """System & Dependency updates."""
-    return [
+    """Cross-Platform System & Dependency updates for Windows, Ubuntu, and Termux."""
+    targets = []
+
+    # 1. OS Package Managers
+    if IS_WINDOWS:
+        if shutil.which("winget"):
+            targets.append(
+                {
+                    "id": 10,
+                    "category": "update",
+                    "name": "Update Windows Apps (winget)",
+                    "recommendation": "system upgrade (Recommended)",
+                    "cmd": "winget upgrade --all --include-unknown",
+                    "default": False,
+                }
+            )
+        elif shutil.which("choco"):
+            targets.append(
+                {
+                    "id": 10,
+                    "category": "update",
+                    "name": "Update Chocolatey Packages",
+                    "recommendation": "system upgrade (Recommended)",
+                    "cmd": "choco upgrade all -y",
+                    "default": False,
+                }
+            )
+    elif IS_TERMUX:
+        targets.extend(
+            [
+                {
+                    "id": 10,
+                    "category": "update",
+                    "name": "Clean Termux & Ubuntu pkg cache",
+                    "recommendation": "system cache (Safe to clean)",
+                    "cmd": "pkg clean && pkg autoclean 2>/dev/null || true",
+                    "default": True,
+                },
+                {
+                    "id": 11,
+                    "category": "update",
+                    "name": "Update Termux Packages (pkg)",
+                    "recommendation": "system upgrade (Recommended)",
+                    "cmd": "pkg update -y && pkg upgrade -y",
+                    "default": False,
+                },
+            ]
+        )
+        if os.path.isdir(UBUNTU_ROOT) and shutil.which("proot-distro"):
+            targets.append(
+                {
+                    "id": 12,
+                    "category": "update",
+                    "name": "Update Ubuntu Packages (apt)",
+                    "recommendation": "distro upgrade (Recommended)",
+                    "cmd": "proot-distro login ubuntu -- bash -c 'apt-get update && apt-get upgrade -y'",
+                    "default": False,
+                }
+            )
+    else:
+        # Standard Linux / Ubuntu
+        if shutil.which("apt-get"):
+            targets.extend(
+                [
+                    {
+                        "id": 10,
+                        "category": "update",
+                        "name": "Clean APT Package Cache",
+                        "recommendation": "system cache (Safe to clean)",
+                        "cmd": "sudo apt-get clean 2>/dev/null || apt-get clean 2>/dev/null || true",
+                        "default": True,
+                    },
+                    {
+                        "id": 11,
+                        "category": "update",
+                        "name": "Update Linux APT Packages",
+                        "recommendation": "system upgrade (Recommended)",
+                        "cmd": "sudo apt-get update && sudo apt-get upgrade -y",
+                        "default": False,
+                    },
+                ]
+            )
+
+    # 2. Universal Python pip & Node npm updates
+    next_id = max([t["id"] for t in targets] + [12]) + 1
+    targets.append(
         {
-            "id": 10,
-            "category": "update",
-            "name": "Clean Termux & Ubuntu pkg cache",
-            "recommendation": "system cache (Safe to clean)",
-            "cmd": "pkg clean && pkg autoclean && proot-distro login ubuntu -- apt-get clean 2>/dev/null || true",
-            "default": True,
-        },
-        {
-            "id": 11,
-            "category": "update",
-            "name": "Update Termux Packages (pkg)",
-            "recommendation": "system upgrade (Recommended)",
-            "cmd": "pkg update -y && pkg upgrade -y",
-            "default": False,
-        },
-        {
-            "id": 12,
-            "category": "update",
-            "name": "Update Ubuntu Packages (apt)",
-            "recommendation": "distro upgrade (Recommended)",
-            "cmd": "proot-distro login ubuntu -- bash -c 'apt-get update && apt-get upgrade -y'",
-            "default": False,
-        },
-        {
-            "id": 13,
+            "id": next_id,
             "category": "update",
             "name": "Purge Python pip build cache",
             "recommendation": "cache files (Safe to purge)",
-            "cmd": "pip cache purge 2>/dev/null || true",
+            "cmd": f"{sys.executable} -m pip cache purge 2>/dev/null || true",
             "default": True,
-        },
-        {
-            "id": 14,
-            "category": "update",
-            "name": "Update Global Node.js Packages",
-            "recommendation": "npm CLI tools (Update all)",
-            "cmd": "npm update -g 2>/dev/null || true",
-            "default": False,
-        },
-    ]
+        }
+    )
+    if shutil.which("npm"):
+        targets.append(
+            {
+                "id": next_id + 1,
+                "category": "update",
+                "name": "Update Global Node.js Packages",
+                "recommendation": "npm CLI tools (Update all)",
+                "cmd": "npm update -g 2>/dev/null || true",
+                "default": False,
+            }
+        )
+
+    return targets
 
 
 # ==============================================================================
@@ -1204,7 +1376,9 @@ def render_main_view(clean_targets, update_targets, selected):
     )
 
     # ALL-AROUND NEON NAVIGATION FOOTER
-    print(f"\n{NEON_CYAN}╔═ COMMANDS & TOUCH NAVIGATION ════════════╗{C_RESET}")
+    nav_title = "═ COMMANDS & NAVIGATION "
+    fill_nav = max(0, cols - 2 - visible_len(nav_title))
+    print(f"\n{NEON_CYAN}╔{nav_title}" + "═" * fill_nav + f"╗{C_RESET}")
     print(
         make_box_row(
             f"{NEON_YELLOW}[Num]{C_RESET} Toggle item   {NEON_GREEN}[a]{C_RESET} Select Safe",
@@ -1247,12 +1421,8 @@ def render_main_view(clean_targets, update_targets, selected):
             cols=cols,
         )
     )
-    print(
-        make_box_row(
-            f"{NEON_RED}[q]{C_RESET} Cancel & Exit", border_color=NEON_CYAN, cols=cols
-        )
-    )
-    print(f"{NEON_CYAN}╚══════════════════════════════════════════╝{C_RESET}")
+    print(make_box_row(f"{NEON_RED}[q]{C_RESET} Cancel & Exit", border_color=NEON_CYAN, cols=cols))
+    print(f"{NEON_CYAN}╚" + "═" * (cols - 2) + f"╝{C_RESET}")
 
 
 def render_apps_view(apps_targets, selected):
@@ -1748,13 +1918,10 @@ def execute_actions(
         for d in kill_daemon_items:
             pid = d["pid"]
             animate_terminate(f"Stopping daemon {d['dtype']} (PID {pid})...")
-            try:
-                os.kill(pid, signal.SIGTERM)
-                time.sleep(0.3)
-                os.kill(pid, signal.SIGKILL)
-            except (OSError, ValueError):
-                pass
-            print(f"    {NEON_RED}✓ Terminated PID {pid}{C_RESET}")
+            if kill_process_pid(pid):
+                print(f"    {NEON_RED}✓ Terminated PID {pid}{C_RESET}")
+            else:
+                print(f"    {NEON_YELLOW}✗ Could not terminate PID {pid}{C_RESET}")
 
     # 2. Delete Rogue Bot Script Files (RED)
     if del_bot_items:
@@ -2349,10 +2516,10 @@ def cli_bots(action="scan", pid=None):
         try:
             p_int = int(pid)
             animate_terminate(f"Terminating PID {p_int}...")
-            os.kill(p_int, signal.SIGTERM)
-            time.sleep(0.3)
-            os.kill(p_int, signal.SIGKILL)
-            print(f"{NEON_GREEN}✓ Process PID {p_int} terminated.{C_RESET}")
+            if kill_process_pid(p_int):
+                print(f"{NEON_GREEN}✓ Process PID {p_int} terminated.{C_RESET}")
+            else:
+                print(f"{NEON_YELLOW}✗ Could not terminate PID {pid}{C_RESET}")
         except Exception as e:
             print(f"{NEON_YELLOW}✗ Could not terminate PID {pid}: {e}{C_RESET}")
 
@@ -2568,7 +2735,9 @@ def cli_autoclean():
 def cli_help():
     cols = get_term_cols()
     print_large_header()
-    print(f"{NEON_CYAN}╔═ TERMUX SENTINEL CLI MANUAL ═════════════╗{C_RESET}")
+    title = "═ TERMUX SENTINEL CLI MANUAL "
+    fill = max(0, cols - 2 - visible_len(title))
+    print(f"{NEON_CYAN}╔{title}" + "═" * fill + f"╗{C_RESET}")
     print(
         make_box_row(
             f"{BRIGHT_WHITE}Global: sentinel [subcommand] [flags]{C_RESET}",
@@ -2576,7 +2745,7 @@ def cli_help():
             cols=cols,
         )
     )
-    print(f"{NEON_CYAN}╚══════════════════════════════════════════╝{C_RESET}")
+    print(f"{NEON_CYAN}╚" + "═" * (cols - 2) + f"╝{C_RESET}")
     print(f"\n{C_BOLD}{BRIGHT_WHITE}COMMANDS:{C_RESET}")
 
     cmds = [

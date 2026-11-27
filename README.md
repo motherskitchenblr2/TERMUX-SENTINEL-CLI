@@ -44,20 +44,34 @@ Specifically calibrated for mobile portrait displays ($\le 44$ columns with **Sh
 
 ## 🚀 Quick Start & Installation
 
-### One-Tap Installation
-Open Termux and execute:
+### Cross-Platform Installation
+
+#### 🤖 Android Termux:
 ```bash
 git clone https://github.com/motherskitchenblr2/TERMUX-SENTINEL.git
 cd TERMUX-SENTINEL
-bash install_or_restore.sh
+bash install.sh
 ```
 
-This will automatically:
-1. Install `Termux_Sentinel.py` to `$HOME/Termux_Sentinel.py`.
-2. Register global CLI binaries `sentinel` and `termux-sentinel` into `$PREFIX/bin`.
-3. Set up the Preservation Vault in `~/.config/termux_sentinel/vault.json`.
-4. Install one-tap home screen shortcuts for **Termux:Widget** in `~/.shortcuts/`.
-5. Configure cloud migration scripts with wake-lock support.
+#### 🐧 Ubuntu / Debian / Linux Desktop & Server:
+```bash
+git clone https://github.com/motherskitchenblr2/TERMUX-SENTINEL.git
+cd TERMUX-SENTINEL
+bash install.sh
+```
+
+#### 🪟 Windows (Command Prompt & PowerShell 5.1/7+):
+Open PowerShell (as Administrator or standard user) and run:
+```powershell
+git clone https://github.com/motherskitchenblr2/TERMUX-SENTINEL.git
+cd TERMUX-SENTINEL
+powershell -ExecutionPolicy Bypass -File .\install.ps1
+```
+Or install via Python standard packaging:
+```cmd
+pip install -e .
+```
+This automatically registers `sentinel` and `termux-sentinel` globally in your terminal!
 
 ---
 
@@ -156,11 +170,13 @@ Termux-Sentinel includes optimized parallel migration scripts to offload tens of
 
 ---
 
-## 📱 Multi-Device Support
+## 📱 Multi-Platform & Wide-Screen Support
 
-Termux-Sentinel is designed to run seamlessly across Android mobile workstations and terminal environments:
-- **Primary Workstation:** Android Termux Environment (ARM64 / AArch64)
-- **Secondary Node:** Ubuntu PRoot-Distro Container
+Termux-Sentinel is designed to run seamlessly across Android mobile workstations, Linux servers, and Windows desktop terminals:
+- **Android Termux:** ARM64 portrait mode with mobile-clamped 44-col HUD.
+- **Ubuntu / Debian Linux:** Server & desktop terminals with full multi-column layout.
+- **Windows 10 / 11:** Native Command Prompt and PowerShell support with Windows Terminal ANSI colors.
+- **Responsive Wide-Screen TUI:** Automatically expands into a dual-pane Cyber Grid on displays $\ge 80$ columns, showing system storage on the left and vault status on the right.
 
 ---
 
@@ -169,7 +185,9 @@ Termux-Sentinel is designed to run seamlessly across Android mobile workstations
 ```text
 TERMUX-SENTINEL/
 ├── Termux_Sentinel.py                  # Core Sentinel Engine (Zero-dependency TUI + CLI)
-├── install_or_restore.sh               # One-tap installer and environment restorer
+├── install.sh                          # Universal installer for Termux, Ubuntu & Linux
+├── install.ps1                         # One-click PowerShell installer for Windows
+├── install_or_restore.sh               # Legacy Termux restore script
 ├── vault.json                          # Default Preservation Vault configuration
 ├── Termux-Sentinel                     # Termux Widget one-tap launcher with wake-lock
 ├── migrate_to_cmf_bkp.sh               # Device cloud migration script (Rclone)

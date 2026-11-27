@@ -131,3 +131,41 @@ def test_bloat_hunter_and_offload_entrypoints():
     assert callable(Termux_Sentinel.cli_hunt)
     assert callable(Termux_Sentinel.cli_offload)
     assert callable(Termux_Sentinel.cli_autoclean)
+
+
+def test_cross_platform_disk_usage():
+    """Verify cross-platform disk usage works and returns valid metrics."""
+    used, total, free, pct = Termux_Sentinel.get_disk_usage()
+    assert used != "N/A"
+    assert total != "N/A"
+    assert free != "N/A"
+    assert "%" in pct
+
+
+def test_wide_screen_columns_responsiveness(monkeypatch):
+    """Verify terminal width adapts dynamically up to 120 columns."""
+    # Simulated mobile portrait width
+    monkeypatch.setattr(
+        Termux_Sentinel.shutil,
+        "get_terminal_size",
+        lambda fallback: type("Size", (), {"columns": 40, "lines": 24})(),
+    )
+    assert Termux_Sentinel.get_term_cols() == 44  # Clamped to min 44
+
+    # Simulated wide desktop terminal
+    monkeypatch.setattr(
+        Termux_Sentinel.shutil,
+        "get_terminal_size",
+        lambda fallback: type("Size", (), {"columns": 100, "lines": 30})(),
+    )
+    assert Termux_Sentinel.get_term_cols() == 100
+
+
+def test_windows_simulation(monkeypatch):
+    """Verify Windows platform simulation logic."""
+    monkeypatch.setattr(Termux_Sentinel, "IS_WINDOWS", True)
+    name = Termux_Sentinel.get_device_name()
+    assert "WINDOWS" in name
+    # Verify kill_process_pid handles windows execution safely
+    res = Termux_Sentinel.kill_process_pid(999999)
+    assert isinstance(res, bool)
