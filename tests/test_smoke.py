@@ -460,3 +460,86 @@ def test_interactive_ai_chat_immediate_exit(monkeypatch, capsys):
     out = capsys.readouterr().out
     assert "AI CHAT STUDIO" in out
     assert "Session closed" in out
+
+
+def test_thinking_levels_configuration():
+    """Verify thinking levels dictionary and set_thinking_level helper."""
+    assert hasattr(Termux_Sentinel, "THINKING_LEVELS")
+    for lvl in ("none", "low", "medium", "extra"):
+        assert lvl in Termux_Sentinel.THINKING_LEVELS
+        assert "prompt" in Termux_Sentinel.THINKING_LEVELS[lvl]
+        assert "name" in Termux_Sentinel.THINKING_LEVELS[lvl]
+
+    ok, name = Termux_Sentinel.set_thinking_level("none")
+    assert ok is True
+    assert "No Thinking" in name
+
+    ok_alias, name_alias = Termux_Sentinel.set_thinking_level("default")
+    assert ok_alias is True
+    assert "Low Thinking" in name_alias
+
+    ok_bad, _ = Termux_Sentinel.set_thinking_level("invalid_level_xyz")
+    assert ok_bad is False
+
+
+def test_format_thinking_response_none_strips_think():
+    """Verify 'none' thinking level strips <think> reasoning blocks completely."""
+    raw = "<think>\nThinking deeply about system storage...\n</think>\nHere is the answer."
+    clean = Termux_Sentinel.format_thinking_response(raw, "none")
+    assert clean == "Here is the answer."
+    assert "<think>" not in clean
+
+
+def test_format_thinking_response_low_compact():
+    """Verify 'low' thinking level condenses reasoning into a 1-line badge."""
+    raw = "<think>\nAnalyzing disk partitions\nChecking inodes\n</think>\nDisk is healthy."
+    clean = Termux_Sentinel.format_thinking_response(raw, "low")
+    assert "💭 [Analyzing disk partitions]" in clean
+    assert "Disk is healthy." in clean
+    assert "<think>" not in clean
+
+
+def test_format_thinking_response_medium_and_extra_boxed():
+    """Verify 'medium' and 'extra' format reasoning into a structured box."""
+    raw = "<think>\nStep 1: Check root\nStep 2: Check cache\n</think>\nFound 2GB bloat."
+    clean = Termux_Sentinel.format_thinking_response(raw, "medium")
+    assert "REASONING (MEDIUM)" in clean
+    assert "Step 1: Check root" in clean
+    assert "Found 2GB bloat." in clean
+
+
+def test_persistent_session_lifecycle(tmp_path, monkeypatch):
+    """Verify creation, persistence, listing, and switching of multi-session chat memory."""
+    fake_sessions_dir = tmp_path / "sessions"
+    fake_active_file = fake_sessions_dir / "active_session.json"
+    monkeypatch.setattr(Termux_Sentinel, "SESSIONS_DIR", str(fake_sessions_dir))
+    monkeypatch.setattr(Termux_Sentinel, "ACTIVE_SESSION_FILE", str(fake_active_file))
+
+    # 1. Create fresh session
+    sess = Termux_Sentinel.create_new_session("System Optimization Session")
+    assert sess["title"] == "System Optimization Session"
+    assert fake_active_file.exists()
+
+    # 2. Append conversation turn & save
+    sess["history"].append({"role": "user", "content": "How to free RAM?"})
+    sess["history"].append({"role": "assistant", "content": "Kill rogue daemons."})
+    Termux_Sentinel.save_active_session(sess)
+
+    # 3. Reload active session - should never forget past turns
+    reloaded = Termux_Sentinel.load_active_session()
+    assert len(reloaded["history"]) == 2
+    assert reloaded["history"][0]["content"] == "How to free RAM?"
+
+    # 4. Create second session
+    sess2 = Termux_Sentinel.create_new_session("Docker Daemon Debugging")
+    assert sess2["title"] == "Docker Daemon Debugging"
+
+    # 5. List sessions
+    all_sess = Termux_Sentinel.list_saved_sessions()
+    assert len(all_sess) >= 2
+
+    # 6. Switch back to first session
+    ok, switched = Termux_Sentinel.load_session_by_id(sess["session_id"])
+    assert ok is True
+    assert switched["title"] == "System Optimization Session"
+    assert len(switched["history"]) == 2

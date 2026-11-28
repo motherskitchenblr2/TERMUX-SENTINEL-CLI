@@ -182,10 +182,25 @@ Users can add custom directory paths or wildcard patterns at any time via `senti
 
 ## 🤖 Interactive AI Chat Studio & Slash Commands
 
-Termux-Sentinel features a dedicated interactive AI Chat Studio (`sentinel chat` or key `[i]`), bringing an Antigravity/Cyber REPL experience directly into Termux with multi-turn memory and live device telemetry injection.
+Termux-Sentinel features a dedicated interactive AI Chat Studio (`sentinel chat` or key `[i]`), bringing an Antigravity/Cyber REPL experience directly into Termux with persistent multi-session memory, configurable thinking controls, and live device telemetry injection.
+
+### 🧠 Configurable Thinking Levels
+Offline local Ollama models (such as Qwen 2.5/3.5, DeepSeek R1, SmolLM) frequently produce verbose chain-of-thought `<think>` blocks that drain CPU and battery. Termux-Sentinel lets you customize reasoning depth on the fly:
+- **`No Thinking` (`none`)**: Strips internal thoughts and `<think>` blocks completely; outputs direct answers instantly.
+- **`Low Thinking` (`low`) — [DEFAULT]**: Fast 1-2 bullet thoughts, battery & CPU optimized for Android Termux.
+- **`Medium Thinking` (`medium`)**: Balanced step-by-step reasoning for troubleshooting.
+- **`Extra Thinking` (`extra`)**: Deep chain-of-thought analysis for complex systems and architecture.
+
+### 💬 Persistent Multi-Session Chat Memory
+Conversations are saved to disk in `~/.config/termux_sentinel/sessions/`. Context is automatically restored across restarts, crashes, or phone reboots so the AI **never forgets** conversation state.
 
 ### Supported Slash Commands:
 - `/help`, `/?` — Display slash command reference manual.
+- `/thinking [level]` — Switch thinking depth: `none`, `low` (default), `medium`, `extra`.
+- `/session` — List, manage, and switch between persistent conversation sessions.
+- `/new [title]` — Start a fresh conversation session.
+- `/load <#|id>` — Restore an earlier conversation session from disk.
+- `/rename <title>` — Rename the active conversation session.
 - `/status` — Render real-time system telemetry HUD (storage, RAM, shields, active daemons).
 - `/model` — Switch AI provider, choose local/cloud model, or update API credentials.
 - `/inspect` — Audit hardware capacity and get offline Ollama model recommendations.
@@ -196,9 +211,9 @@ Termux-Sentinel features a dedicated interactive AI Chat Studio (`sentinel chat`
 - `/vault` — List shielded directories and active preservation rules.
 - `/copy` — Copy the latest AI response directly to Android/system clipboard.
 - `/export [name]` — Export the full conversation transcript as Markdown to `~/.config/termux_sentinel/transcripts/`.
-- `/clear`, `/reset` — Clear conversation context and multi-turn memory.
+- `/clear`, `/reset` — Clear conversation context for current session.
 - `/sh <cmd>`, `!<cmd>` — Run a local shell command and inject its output directly into the chat for instant analysis.
-- `/exit`, `/quit` — Exit AI Chat Studio cleanly.
+- `/exit`, `/quit` — Save session to disk and exit AI Chat Studio cleanly.
 
 ---
 

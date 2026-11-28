@@ -69,6 +69,8 @@ VAULT_FILE = os.path.join(VAULT_DIR, "vault.json")
 CRASH_LOG_FILE = os.path.join(VAULT_DIR, "crash.log")
 AI_CONFIG_FILE = os.path.join(VAULT_DIR, "ai_config.json")
 TRANSCRIPTS_DIR = os.path.join(VAULT_DIR, "transcripts")
+SESSIONS_DIR = os.path.join(VAULT_DIR, "sessions")
+ACTIVE_SESSION_FILE = os.path.join(SESSIONS_DIR, "active_session.json")
 UBUNTU_ROOT = (
     "/data/data/com.termux/files/usr/var/lib/proot-distro/containers/ubuntu/rootfs"
     if IS_TERMUX
@@ -591,7 +593,281 @@ DEFAULT_AI_CONFIG = {
     "api_key": "",
     "model": "qwen2.5:3b",
     "agentic_enabled": False,
+    "thinking_level": "low",
 }
+
+THINKING_LEVELS = {
+    "none": {
+        "id": "none",
+        "name": "No Thinking",
+        "badge": "NO THINKING",
+        "desc": "Strips thinking blocks; outputs answers immediately without reasoning delay.",
+        "prompt": "Do NOT output internal monologue or <think> tags. Provide the direct answer immediately.",
+        "reasoning_effort": "low",
+        "temperature": 0.2,
+        "max_tokens": 600,
+    },
+    "low": {
+        "id": "low",
+        "name": "Low Thinking",
+        "badge": "LOW (DEFAULT)",
+        "desc": "Minimal concise thoughts (1-2 points); optimal for Android battery and speed.",
+        "prompt": "Keep any reasoning ultra-concise (maximum 1-2 brief bullet points) before giving the direct answer.",
+        "reasoning_effort": "low",
+        "temperature": 0.3,
+        "max_tokens": 800,
+    },
+    "medium": {
+        "id": "medium",
+        "name": "Medium Thinking",
+        "badge": "MEDIUM",
+        "desc": "Balanced reasoning for complex troubleshooting and multi-step tasks.",
+        "prompt": "Reason through the problem in a clear, concise manner before giving the final solution.",
+        "reasoning_effort": "medium",
+        "temperature": 0.4,
+        "max_tokens": 1200,
+    },
+    "extra": {
+        "id": "extra",
+        "name": "Extra Thinking",
+        "badge": "EXTRA DEEP",
+        "desc": "Deep chain-of-thought analysis for complex architectural or debugging challenges.",
+        "prompt": "Perform thorough, comprehensive step-by-step chain-of-thought reasoning before concluding.",
+        "reasoning_effort": "high",
+        "temperature": 0.6,
+        "max_tokens": 2048,
+    },
+}
+
+
+def set_thinking_level(level_id):
+    """Sets active thinking level and saves to ai_config.json."""
+    level_id = str(level_id).lower().strip()
+    alias_map = {
+        "0": "none",
+        "off": "none",
+        "no": "none",
+        "1": "low",
+        "quick": "low",
+        "fast": "low",
+        "default": "low",
+        "2": "medium",
+        "med": "medium",
+        "balanced": "medium",
+        "3": "extra",
+        "high": "extra",
+        "deep": "extra",
+    }
+    level_id = alias_map.get(level_id, level_id)
+    if level_id not in THINKING_LEVELS:
+        return (
+            False,
+            f"Invalid level '{level_id}'. Choices: none, low, medium, extra.",
+        )
+    cfg = load_ai_config()
+    cfg["thinking_level"] = level_id
+    save_ai_config(cfg)
+    return True, THINKING_LEVELS[level_id]["name"]
+
+
+def format_thinking_response(raw_resp, thinking_level="low"):
+    """Formats or strips <think>...</think> reasoning blocks based on active thinking level."""
+    if not raw_resp:
+        return ""
+
+    lvl = (
+        thinking_level.lower().strip()
+        if thinking_level in THINKING_LEVELS
+        else "low"
+    )
+    has_think = bool(re.search(r"<think>(.*?)</think>", raw_resp, flags=re.DOTALL))
+
+    if not has_think:
+        return raw_resp.strip()
+
+    if lvl == "none":
+        clean = re.sub(r"<think>.*?</think>", "", raw_resp, flags=re.DOTALL).strip()
+        return clean if clean else raw_resp.strip()
+
+    elif lvl == "low":
+        match = re.search(r"<think>(.*?)</think>", raw_resp, flags=re.DOTALL)
+        answer = re.sub(r"<think>.*?</think>", "", raw_resp, flags=re.DOTALL).strip()
+        thoughts = match.group(1).strip() if match else ""
+        first_line = (
+            thoughts.splitlines()[0].strip()
+            if thoughts
+            else "Quick reasoning completed"
+        )
+        if len(first_line) > 65:
+            first_line = first_line[:62] + "..."
+        prefix = f"{TEXT_MUTED}💭 [{first_line}]{C_RESET}\n"
+        return f"{prefix}\n{answer}" if answer else thoughts
+
+    else:
+        match = re.search(r"<think>(.*?)</think>", raw_resp, flags=re.DOTALL)
+        answer = re.sub(r"<think>.*?</think>", "", raw_resp, flags=re.DOTALL).strip()
+        thoughts = match.group(1).strip() if match else ""
+        t_lines = [
+            f"{TEXT_MUTED}│  {tl}{C_RESET}"
+            for tl in thoughts.splitlines()[:25]
+        ]
+        if len(thoughts.splitlines()) > 25:
+            t_lines.append(
+                f"{TEXT_MUTED}│  ... [{len(thoughts.splitlines()) - 25} lines truncated]{C_RESET}"
+            )
+        header = f"{TEXT_MUTED}╭─ 💭 REASONING ({lvl.upper()}) ─────────────────────────{C_RESET}"
+        footer = f"{TEXT_MUTED}╰──────────────────────────────────────────────────────────{C_RESET}"
+        box = "\n".join([header] + t_lines + [footer])
+        return f"{box}\n\n{answer}" if answer else box
+
+
+def init_sessions_dir():
+    """Ensures sessions directory exists."""
+    os.makedirs(SESSIONS_DIR, exist_ok=True)
+
+
+def create_new_session(title=None):
+    """Initializes a new persistent chat session and sets it as active."""
+    init_sessions_dir()
+    cfg = load_ai_config()
+    session_id = f"sess_{time.strftime('%Y%m%d_%H%M%S')}_{int(time.time() * 1000) % 1000:03d}"
+    new_sess = {
+        "session_id": session_id,
+        "title": title or f"Session {time.strftime('%b %d, %H:%M')}",
+        "created_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+        "updated_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+        "model": cfg.get("model", "qwen2.5:3b"),
+        "provider": cfg.get("provider", "ollama"),
+        "thinking_level": cfg.get("thinking_level", "low"),
+        "history": [],
+    }
+    save_active_session(new_sess)
+    return new_sess
+
+
+def load_active_session():
+    """Loads current active conversation session from disk, creating one if none exists."""
+    init_sessions_dir()
+    if os.path.exists(ACTIVE_SESSION_FILE):
+        try:
+            with open(ACTIVE_SESSION_FILE, encoding="utf-8") as f:
+                data = json.load(f)
+                if (
+                    isinstance(data, dict)
+                    and "history" in data
+                    and "session_id" in data
+                ):
+                    return data
+        except Exception:
+            pass
+    return create_new_session()
+
+
+def save_active_session(session_data):
+    """Saves session atomically both as active_session.json and archived under its session_id."""
+    init_sessions_dir()
+    if not isinstance(session_data, dict):
+        return
+    session_data["updated_at"] = time.strftime("%Y-%m-%d %H:%M:%S")
+    sess_id = session_data.get(
+        "session_id", f"sess_{time.strftime('%Y%m%d_%H%M%S')}_{int(time.time() * 1000) % 1000:03d}"
+    )
+    archive_f = os.path.join(SESSIONS_DIR, f"{sess_id}.json")
+
+    try:
+        tmp_active = ACTIVE_SESSION_FILE + f".tmp.{os.getpid()}"
+        with open(tmp_active, "w", encoding="utf-8") as f:
+            json.dump(session_data, f, indent=2)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp_active, ACTIVE_SESSION_FILE)
+    except Exception:
+        pass
+
+    try:
+        tmp_archive = archive_f + f".tmp.{os.getpid()}"
+        with open(tmp_archive, "w", encoding="utf-8") as f:
+            json.dump(session_data, f, indent=2)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp_archive, archive_f)
+    except Exception:
+        pass
+
+
+def list_saved_sessions():
+    """Lists all saved chat sessions sorted by last updated timestamp."""
+    init_sessions_dir()
+    sessions = []
+    if not os.path.exists(SESSIONS_DIR):
+        return sessions
+    for entry in os.scandir(SESSIONS_DIR):
+        if (
+            entry.is_file()
+            and entry.name.startswith("sess_")
+            and entry.name.endswith(".json")
+        ):
+            try:
+                with open(entry.path, encoding="utf-8") as f:
+                    data = json.load(f)
+                    if isinstance(data, dict) and "session_id" in data:
+                        sessions.append(data)
+            except Exception:
+                pass
+    sessions.sort(key=lambda s: s.get("updated_at", ""), reverse=True)
+    return sessions
+
+
+def load_session_by_id(target):
+    """Loads a specific session by session_id or 1-based index and sets it active."""
+    sessions = list_saved_sessions()
+    target_str = str(target).strip()
+    selected_sess = None
+    if target_str.isdigit():
+        idx = int(target_str)
+        if 1 <= idx <= len(sessions):
+            selected_sess = sessions[idx - 1]
+    if not selected_sess:
+        for s in sessions:
+            if (
+                s.get("session_id") == target_str
+                or s.get("title", "").lower() == target_str.lower()
+            ):
+                selected_sess = s
+                break
+    if not selected_sess:
+        return False, f"Session '{target}' not found."
+    save_active_session(selected_sess)
+    return True, selected_sess
+
+
+def delete_session_by_id(target):
+    """Deletes a saved session from disk."""
+    sessions = list_saved_sessions()
+    target_str = str(target).strip()
+    selected_sess = None
+    if target_str.isdigit():
+        idx = int(target_str)
+        if 1 <= idx <= len(sessions):
+            selected_sess = sessions[idx - 1]
+    if not selected_sess:
+        for s in sessions:
+            if s.get("session_id") == target_str:
+                selected_sess = s
+                break
+    if not selected_sess:
+        return False, f"Session '{target}' not found."
+    sid = selected_sess["session_id"]
+    sess_f = os.path.join(SESSIONS_DIR, f"{sid}.json")
+    try:
+        if os.path.exists(sess_f):
+            os.remove(sess_f)
+    except Exception as e:
+        return False, str(e)
+    curr = load_active_session()
+    if curr.get("session_id") == sid:
+        create_new_session()
+    return True, f"Session '{selected_sess.get('title', sid)}' deleted."
 
 
 def load_ai_config():
@@ -4575,7 +4851,7 @@ def interactive_ai_setup():
 
 
 def query_agentic_ai(prompt, system_prompt=None, history=None):
-    """Executes an AI inference request using configured local Ollama or cloud provider with multi-turn support."""
+    """Executes an AI inference request using configured local Ollama or cloud provider with multi-turn support and thinking control."""
     cfg = load_ai_config()
     p_id = cfg.get("provider", "ollama")
     p_info = AI_PROVIDERS.get(p_id, AI_PROVIDERS["ollama"])
@@ -4583,15 +4859,22 @@ def query_agentic_ai(prompt, system_prompt=None, history=None):
     model = cfg.get("model", "qwen2.5:3b")
     api_key = cfg.get("api_key", "")
     p_type = p_info["type"]
+    thinking_level = cfg.get("thinking_level", "low")
+    think_info = THINKING_LEVELS.get(thinking_level, THINKING_LEVELS["low"])
 
     sys_content = (
-        system_prompt
-        or "You are Termux Sentinel Autonomous AI Assistant. Keep responses concise, actionable, and strictly under 150 words."
+        (
+            system_prompt
+            or "You are Termux Sentinel Autonomous AI Assistant. Keep responses concise, actionable, and strictly under 150 words."
+        )
+        + f"\n[Thinking Directive: {think_info['name']}]: {think_info['prompt']}"
     )
 
     clean_history = []
     if history and isinstance(history, list):
-        for turn in history[-16:]:
+        # Anchor conversation premise (first 2 turns) + most recent 14 turns so context is never forgotten
+        selected = (history[:2] + history[-14:]) if len(history) > 16 else history
+        for turn in selected:
             if isinstance(turn, dict) and "role" in turn and "content" in turn:
                 clean_history.append({"role": turn["role"], "content": turn["content"]})
 
@@ -4608,7 +4891,10 @@ def query_agentic_ai(prompt, system_prompt=None, history=None):
                 contents.append({"role": "user", "parts": [{"text": prompt}]})
             payload_dict = {
                 "contents": contents,
-                "generationConfig": {"temperature": 0.3, "maxOutputTokens": 800},
+                "generationConfig": {
+                    "temperature": think_info["temperature"],
+                    "maxOutputTokens": think_info["max_tokens"],
+                },
             }
             if clean_history:
                 payload_dict["systemInstruction"] = {"parts": [{"text": sys_content}]}
@@ -4623,7 +4909,8 @@ def query_agentic_ai(prompt, system_prompt=None, history=None):
             )
             with urllib.request.urlopen(req, timeout=25.0) as resp:
                 data = json.loads(resp.read().decode("utf-8"))
-                return data["candidates"][0]["content"]["parts"][0]["text"].strip()
+                raw_out = data["candidates"][0]["content"]["parts"][0]["text"].strip()
+                return format_thinking_response(raw_out, thinking_level)
         elif p_type == "anthropic":
             url = f"{base_url}/messages"
             messages = []
@@ -4635,7 +4922,7 @@ def query_agentic_ai(prompt, system_prompt=None, history=None):
                     "model": model,
                     "system": sys_content,
                     "messages": messages,
-                    "max_tokens": 800,
+                    "max_tokens": think_info["max_tokens"],
                 }
             ).encode("utf-8")
             req = urllib.request.Request(
@@ -4650,7 +4937,8 @@ def query_agentic_ai(prompt, system_prompt=None, history=None):
             )
             with urllib.request.urlopen(req, timeout=25.0) as resp:
                 data = json.loads(resp.read().decode("utf-8"))
-                return data["content"][0]["text"].strip()
+                raw_out = data["content"][0]["text"].strip()
+                return format_thinking_response(raw_out, thinking_level)
         elif p_type == "ollama":
             stat = get_ollama_live_status(base_url)
             if not stat["running"]:
@@ -4664,19 +4952,23 @@ def query_agentic_ai(prompt, system_prompt=None, history=None):
                     f"Error: Model '{model}' is not downloaded in Ollama storage.\n"
                     f"Please run 'sentinel ai inspect' or 'ollama pull {model}' to download it first."
                 )
-            # Attempt /api/chat with full multi-turn messages
             url_chat = f"{base_url}/api/chat"
             messages = [{"role": "system", "content": sys_content}]
             for turn in clean_history:
                 messages.append({"role": turn["role"], "content": turn["content"]})
             messages.append({"role": "user", "content": prompt})
-            payload_chat = json.dumps(
-                {
-                    "model": model,
-                    "messages": messages,
-                    "stream": False,
-                }
-            ).encode("utf-8")
+            payload_chat_dict = {
+                "model": model,
+                "messages": messages,
+                "stream": False,
+                "options": {
+                    "temperature": think_info["temperature"],
+                    "num_predict": think_info["max_tokens"],
+                },
+            }
+            if thinking_level == "none":
+                payload_chat_dict["think"] = False
+            payload_chat = json.dumps(payload_chat_dict).encode("utf-8")
             req_chat = urllib.request.Request(
                 url_chat,
                 data=payload_chat,
@@ -4688,21 +4980,26 @@ def query_agentic_ai(prompt, system_prompt=None, history=None):
             try:
                 with urllib.request.urlopen(req_chat, timeout=30.0) as resp:
                     data = json.loads(resp.read().decode("utf-8"))
-                    return data.get("message", {}).get("content", "").strip()
+                    raw_out = data.get("message", {}).get("content", "").strip()
+                    return format_thinking_response(raw_out, thinking_level)
             except Exception:
-                # Fallback to /api/generate
                 url_gen = f"{base_url}/api/generate"
                 prompt_full = f"{sys_content}\n\n"
                 for turn in clean_history:
                     prompt_full += f"{turn['role'].upper()}: {turn['content']}\n"
                 prompt_full += f"USER: {prompt}\nASSISTANT: "
-                payload_gen = json.dumps(
-                    {
-                        "model": model,
-                        "prompt": prompt_full,
-                        "stream": False,
-                    }
-                ).encode("utf-8")
+                payload_gen_dict = {
+                    "model": model,
+                    "prompt": prompt_full,
+                    "stream": False,
+                    "options": {
+                        "temperature": think_info["temperature"],
+                        "num_predict": think_info["max_tokens"],
+                    },
+                }
+                if thinking_level == "none":
+                    payload_gen_dict["think"] = False
+                payload_gen = json.dumps(payload_gen_dict).encode("utf-8")
                 req_gen = urllib.request.Request(
                     url_gen,
                     data=payload_gen,
@@ -4713,21 +5010,25 @@ def query_agentic_ai(prompt, system_prompt=None, history=None):
                 )
                 with urllib.request.urlopen(req_gen, timeout=30.0) as resp:
                     data = json.loads(resp.read().decode("utf-8"))
-                    return data.get("response", "").strip()
+                    raw_out = data.get("response", "").strip()
+                    return format_thinking_response(raw_out, thinking_level)
         else:
             url = f"{base_url}/chat/completions"
             messages = [{"role": "system", "content": sys_content}]
             for turn in clean_history:
                 messages.append({"role": turn["role"], "content": turn["content"]})
             messages.append({"role": "user", "content": prompt})
-            payload = json.dumps(
-                {
-                    "model": model,
-                    "messages": messages,
-                    "temperature": 0.3,
-                    "max_tokens": 800,
-                }
-            ).encode("utf-8")
+            payload_dict = {
+                "model": model,
+                "messages": messages,
+                "temperature": think_info["temperature"],
+                "max_tokens": think_info["max_tokens"],
+            }
+            if think_info.get("reasoning_effort") and any(
+                k in model.lower() for k in ("o1", "o3", "deepseek-r1")
+            ):
+                payload_dict["reasoning_effort"] = think_info["reasoning_effort"]
+            payload = json.dumps(payload_dict).encode("utf-8")
             req = urllib.request.Request(
                 url,
                 data=payload,
@@ -4739,7 +5040,8 @@ def query_agentic_ai(prompt, system_prompt=None, history=None):
             )
             with urllib.request.urlopen(req, timeout=25.0) as resp:
                 data = json.loads(resp.read().decode("utf-8"))
-                return data["choices"][0]["message"]["content"].strip()
+                raw_out = data["choices"][0]["message"]["content"].strip()
+                return format_thinking_response(raw_out, thinking_level)
     except Exception as e:
         return f"Inference Failed ({p_info['name']}): {e}"
 
@@ -4854,9 +5156,10 @@ def export_chat_transcript(history, filename=None):
 
 
 def interactive_ai_chat():
-    """Dedicated interactive AI Chat Studio TUI with multi-turn memory, slash commands & telemetry injection."""
+    """Dedicated interactive AI Chat Studio TUI with persistent multi-session memory, thinking controls & telemetry."""
     cols = get_term_cols()
-    history = []
+    curr_session = load_active_session()
+    history = curr_session.get("history", [])
 
     print("\033[2J\033[H", end="")
     print_large_header()
@@ -4865,6 +5168,12 @@ def interactive_ai_chat():
     cfg = load_ai_config()
     p_name = cfg.get("provider_name", "Ollama")
     m_name = cfg.get("model", "None")
+    thinking_level = cfg.get("thinking_level", "low")
+    think_badge = THINKING_LEVELS.get(thinking_level, THINKING_LEVELS["low"])["badge"]
+
+    sess_title = curr_session.get("title", "Active Session")
+    if len(sess_title) > 28:
+        sess_title = sess_title[:25] + "..."
 
     banner_title = "═ AI CHAT STUDIO ═"
     print(
@@ -4881,19 +5190,27 @@ def interactive_ai_chat():
     )
     print(
         make_box_row(
-            f"Provider: {NEON_GREEN}{p_name}{C_RESET} | Model: {NEON_CYAN}{m_name}{C_RESET}",
+            f"Provider: {NEON_GREEN}{p_name}{C_RESET} | Model: {NEON_CYAN}{m_name}{C_RESET} | Thinking: {NEON_YELLOW}{think_badge}{C_RESET}",
             border_color=NEON_CYAN,
             cols=cols,
         )
     )
     print(
         make_box_row(
-            f"{TEXT_MUTED}Commands: /help, /status, /model, /clean, /hunt, /copy, /export, /sh, /exit{C_RESET}",
+            f"Session: {BRIGHT_WHITE}{sess_title}{C_RESET} {TEXT_MUTED}({len(history)} msgs){C_RESET} | {TEXT_MUTED}/thinking, /session, /new, /help{C_RESET}",
             border_color=NEON_CYAN,
             cols=cols,
         )
     )
     print(f"{NEON_CYAN}╚" + "═" * (cols - 2) + f"╝{C_RESET}\n")
+
+    if history:
+        print(
+            f"{NEON_GREEN}✓ Resumed persistent session:{C_RESET} {BRIGHT_WHITE}'{curr_session.get('title')}'{C_RESET} {TEXT_MUTED}({len(history)} messages in memory){C_RESET}"
+        )
+        print(
+            f"{TEXT_MUTED}  Commands: /new (fresh session), /session (manage sessions), /thinking (speed/depth){C_RESET}\n"
+        )
 
     while True:
         try:
@@ -4909,9 +5226,9 @@ def interactive_ai_chat():
         if not user_input:
             continue
 
-        lower = user_input.lower()
+        lower = user_input.lower().strip()
         if lower in ("/exit", "/quit", ":q", "exit", "quit"):
-            print(f"\n{NEON_YELLOW}Session closed. Returning to Sentinel...{C_RESET}\n")
+            print(f"\n{NEON_YELLOW}Session closed & saved to disk. Returning to Sentinel...{C_RESET}\n")
             break
 
         if lower in ("/help", "/?", "?"):
@@ -4920,6 +5237,11 @@ def interactive_ai_chat():
             )
             help_cmds = [
                 ("/help, /?", "Show this command manual"),
+                ("/thinking [lvl]", "Set thinking depth: none, low (default), medium, extra"),
+                ("/session", "List all persistent conversation sessions"),
+                ("/new [title]", "Start a fresh conversation session"),
+                ("/load <#|id>", "Load an earlier saved conversation session"),
+                ("/rename <title>", "Rename the current conversation session"),
                 ("/status", "Display live system telemetry HUD"),
                 ("/model", "Switch AI provider, model or update API key"),
                 ("/inspect", "Audit hardware & recommend offline Ollama models"),
@@ -4930,7 +5252,7 @@ def interactive_ai_chat():
                 ("/vault", "List protected directories and active shields"),
                 ("/copy", "Copy last AI response to system/Android clipboard"),
                 ("/export [name]", "Save chat transcript to markdown in transcripts/"),
-                ("/clear, /reset", "Clear conversation context and memory"),
+                ("/clear, /reset", "Clear messages in the current session"),
                 ("/sh <cmd>, !<cmd>", "Run shell command and analyze output in chat"),
                 ("/exit, /quit", "Exit AI Chat Studio and return to Sentinel"),
             ]
@@ -4943,6 +5265,116 @@ def interactive_ai_chat():
             )
             continue
 
+        if lower.startswith("/thinking") or lower.startswith("/reasoning"):
+            parts = user_input.split(maxsplit=1)
+            if len(parts) > 1:
+                target_lvl = parts[1].strip()
+                ok, res_name = set_thinking_level(target_lvl)
+                if ok:
+                    print(f"\n{NEON_GREEN}✓ Thinking Level updated to:{C_RESET} {BRIGHT_WHITE}{res_name}{C_RESET}\n")
+                else:
+                    print(f"\n{NEON_RED}✗ {res_name}{C_RESET}\n")
+            else:
+                cfg = load_ai_config()
+                cur_lvl = cfg.get("thinking_level", "low")
+                print(f"\n{NEON_CYAN}╔═ 🧠 OLLAMA & AI THINKING SETTINGS ═══════════════════════════════╗{C_RESET}")
+                print(f" Current Level: {NEON_GREEN}{THINKING_LEVELS.get(cur_lvl, {}).get('name', 'Low')}{C_RESET}\n")
+                print(f"  [1] {BRIGHT_WHITE}No Thinking{C_RESET}    {TEXT_MUTED}- Instant answers; strips <think> blocks completely{C_RESET}")
+                print(f"  [2] {BRIGHT_WHITE}Low Thinking{C_RESET}   {TEXT_MUTED}- Quick 1-2 bullet thoughts; battery & CPU optimized (DEFAULT){C_RESET}")
+                print(f"  [3] {BRIGHT_WHITE}Medium Thinking{C_RESET}{TEXT_MUTED}- Balanced step-by-step reasoning{C_RESET}")
+                print(f"  [4] {BRIGHT_WHITE}Extra Thinking{C_RESET} {TEXT_MUTED}- Deep chain-of-thought analysis{C_RESET}")
+                print(f"{NEON_CYAN}╚══════════════════════════════════════════════════════════════════╝{C_RESET}")
+                try:
+                    choice = input(f"{NEON_YELLOW}Select thinking level [1-4 or Enter to keep]: {C_RESET}").strip()
+                except (KeyboardInterrupt, EOFError):
+                    continue
+                choice_map = {"1": "none", "2": "low", "3": "medium", "4": "extra"}
+                if choice in choice_map:
+                    _, res_name = set_thinking_level(choice_map[choice])
+                    print(f"\n{NEON_GREEN}✓ Thinking level set to: {res_name}{C_RESET}\n")
+            continue
+
+        if lower.startswith("/new"):
+            parts = user_input.split(maxsplit=1)
+            title = parts[1].strip() if len(parts) > 1 else None
+            curr_session = create_new_session(title)
+            history = []
+            print(f"\n{NEON_GREEN}✓ Started fresh session:{C_RESET} {BRIGHT_WHITE}'{curr_session['title']}'{C_RESET}\n")
+            continue
+
+        if lower.startswith("/load"):
+            parts = user_input.split(maxsplit=1)
+            if len(parts) < 2:
+                print(f"\n{NEON_YELLOW}Usage: /load <# or session_id>{C_RESET}\n")
+                continue
+            ok, loaded = load_session_by_id(parts[1])
+            if ok:
+                curr_session = loaded
+                history = curr_session.get("history", [])
+                print(
+                    f"\n{NEON_GREEN}✓ Loaded session:{C_RESET} {BRIGHT_WHITE}'{curr_session['title']}'{C_RESET} "
+                    f"{TEXT_MUTED}({len(history)} messages restored){C_RESET}\n"
+                )
+            else:
+                print(f"\n{NEON_RED}✗ {loaded}{C_RESET}\n")
+            continue
+
+        if lower.startswith("/rename"):
+            parts = user_input.split(maxsplit=1)
+            if len(parts) < 2:
+                print(f"\n{NEON_YELLOW}Usage: /rename <new session title>{C_RESET}\n")
+                continue
+            curr_session["title"] = parts[1].strip()
+            save_active_session(curr_session)
+            print(f"\n{NEON_GREEN}✓ Session renamed to:{C_RESET} {BRIGHT_WHITE}'{curr_session['title']}'{C_RESET}\n")
+            continue
+
+        if lower.startswith("/session") or lower.startswith("/sessions"):
+            parts = user_input.split()
+            subcmd = parts[1].lower() if len(parts) > 1 else "list"
+            if subcmd == "new":
+                title = " ".join(parts[2:]) if len(parts) > 2 else None
+                curr_session = create_new_session(title)
+                history = []
+                print(f"\n{NEON_GREEN}✓ Started fresh session:{C_RESET} {BRIGHT_WHITE}'{curr_session['title']}'{C_RESET}\n")
+            elif subcmd == "load":
+                if len(parts) < 3:
+                    print(f"\n{NEON_YELLOW}Usage: /session load <# or session_id>{C_RESET}\n")
+                else:
+                    ok, loaded = load_session_by_id(parts[2])
+                    if ok:
+                        curr_session = loaded
+                        history = curr_session.get("history", [])
+                        print(
+                            f"\n{NEON_GREEN}✓ Loaded session:{C_RESET} {BRIGHT_WHITE}'{curr_session['title']}'{C_RESET} "
+                            f"{TEXT_MUTED}({len(history)} messages restored){C_RESET}\n"
+                        )
+                    else:
+                        print(f"\n{NEON_RED}✗ {loaded}{C_RESET}\n")
+            elif subcmd == "delete":
+                if len(parts) < 3:
+                    print(f"\n{NEON_YELLOW}Usage: /session delete <# or session_id>{C_RESET}\n")
+                else:
+                    ok, msg = delete_session_by_id(parts[2])
+                    print(f"\n{NEON_GREEN if ok else NEON_RED}{msg}{C_RESET}\n")
+            else:
+                # List sessions
+                all_sessions = list_saved_sessions()
+                print(f"\n{NEON_CYAN}╔═ 💬 PERSISTENT CONVERSATION SESSIONS ({len(all_sessions)}) ═══════════╗{C_RESET}")
+                if not all_sessions:
+                    print(f"  {TEXT_MUTED}No previous sessions archived yet.{C_RESET}")
+                else:
+                    for i, s in enumerate(all_sessions[:10], 1):
+                        is_active = s.get("session_id") == curr_session.get("session_id")
+                        tag = f"{NEON_GREEN}● ACTIVE{C_RESET}" if is_active else f"{TEXT_MUTED}○{C_RESET}"
+                        title_disp = s.get("title", "Untitled")[:30]
+                        turns_cnt = len(s.get("history", []))
+                        upd = s.get("updated_at", "")[5:16]
+                        print(f"  [{i:2d}] {tag} {BRIGHT_WHITE}{title_disp:<30}{C_RESET} {NEON_CYAN}{turns_cnt:2d} msgs{C_RESET} {TEXT_MUTED}{upd}{C_RESET}")
+                print(f"{NEON_CYAN}╚══════════════════════════════════════════════════════════════════╝{C_RESET}")
+                print(f"{TEXT_MUTED}Commands: /session new [title], /session load <#>, /session delete <#>{C_RESET}\n")
+            continue
+
         if lower == "/status":
             print()
             render_hud_box("LIVE TELEMETRY")
@@ -4951,7 +5383,9 @@ def interactive_ai_chat():
 
         if lower in ("/clear", "/reset"):
             history.clear()
-            print(f"\n{NEON_GREEN}✓ Conversation memory cleared.{C_RESET}\n")
+            curr_session["history"] = []
+            save_active_session(curr_session)
+            print(f"\n{NEON_GREEN}✓ Conversation memory for active session cleared.{C_RESET}\n")
             continue
 
         if lower in ("/model", "/provider", "/setup"):
@@ -5086,6 +5520,8 @@ def interactive_ai_chat():
                         "content": f"I observed the output of `{cmd}` (exit code {proc.returncode}). What would you like to analyze or do next with it?",
                     }
                 )
+                curr_session["history"] = history
+                save_active_session(curr_session)
             except subprocess.TimeoutExpired:
                 print(f"{NEON_RED}│ Command timed out after 30 seconds.{C_RESET}")
                 print(
@@ -5133,8 +5569,15 @@ def interactive_ai_chat():
                     print(f"{NEON_PINK}│{C_RESET}  {BRIGHT_WHITE}{w}{C_RESET}")
         print(f"{NEON_PINK}╰" + "─" * (cols - 2) + f"{C_RESET}\n")
 
-        history.append({"role": "user", "content": user_input})
-        history.append({"role": "assistant", "content": resp})
+        history.append({"role": "user", "content": user_input, "timestamp": time.strftime("%Y-%m-%d %H:%M:%S")})
+        history.append({"role": "assistant", "content": resp, "timestamp": time.strftime("%Y-%m-%d %H:%M:%S")})
+
+        # Auto-update generic session title from first user query
+        if curr_session.get("title", "").startswith("Session ") and user_input:
+            curr_session["title"] = user_input[:32] + ("..." if len(user_input) > 32 else "")
+
+        curr_session["history"] = history
+        save_active_session(curr_session)
 
 
 def run_agentic_ai_advisor(
@@ -5215,6 +5658,51 @@ def cli_ai(action="menu", *args):
     """CLI subcommand router for Sentinel AI features."""
     if action in ("chat", "talk", "repl", "interactive", "studio"):
         interactive_ai_chat()
+    elif action in ("thinking", "think", "reasoning"):
+        if args:
+            ok, name = set_thinking_level(args[0])
+            if ok:
+                print(
+                    f"{NEON_GREEN}✓ Thinking Level updated to:{C_RESET} {BRIGHT_WHITE}{name}{C_RESET}"
+                )
+            else:
+                print(f"{NEON_RED}✗ {name}{C_RESET}")
+        else:
+            cfg = load_ai_config()
+            cur = cfg.get("thinking_level", "low")
+            info = THINKING_LEVELS.get(cur, {})
+            print(
+                f"Current Thinking Level: {NEON_GREEN}{info.get('name', 'Low')}{C_RESET} ({info.get('desc', '')})"
+            )
+            print("Available options: none, low (default), medium, extra")
+    elif action in ("sessions", "session"):
+        sub = args[0].lower() if args else "list"
+        if sub == "new":
+            t = " ".join(args[1:]) if len(args) > 1 else None
+            s = create_new_session(t)
+            print(f"{NEON_GREEN}✓ Started fresh session:{C_RESET} {s['title']}")
+        elif sub == "load":
+            if len(args) < 2:
+                print(f"{NEON_YELLOW}Usage: sentinel ai session load <#|id>{C_RESET}")
+            else:
+                ok, s = load_session_by_id(args[1])
+                if ok:
+                    print(
+                        f"{NEON_GREEN}✓ Loaded session: {s.get('title')}{C_RESET}"
+                    )
+                else:
+                    print(f"{NEON_RED}{s}{C_RESET}")
+        else:
+            sess_list = list_saved_sessions()
+            print_large_header()
+            print_section_h2(
+                f"SAVED CONVERSATION SESSIONS ({len(sess_list)})",
+                color=NEON_PINK,
+            )
+            for i, s in enumerate(sess_list, 1):
+                print(
+                    f"  [{i:2d}] {BRIGHT_WHITE}{s.get('title', 'Untitled'):<32}{C_RESET} {NEON_CYAN}{len(s.get('history', [])):2d} msgs{C_RESET} {TEXT_MUTED}{s.get('updated_at', '')}{C_RESET}"
+                )
     elif action in ("inspect", "hardware", "hw"):
         render_hardware_inspection_view()
     elif action in ("setup", "config", "providers", "provider"):
@@ -5247,6 +5735,11 @@ def cli_ai(action="menu", *args):
             f"  Provider       : {NEON_CYAN}{cfg.get('provider_name', 'Ollama')}{C_RESET}"
         )
         print(f"  Target Model   : {BRIGHT_WHITE}{cfg.get('model', 'None')}{C_RESET}")
+        cur_think = cfg.get("thinking_level", "low")
+        think_info = THINKING_LEVELS.get(cur_think, THINKING_LEVELS["low"])
+        print(
+            f"  Thinking Level : {NEON_YELLOW}{think_info.get('name', 'Low')}{C_RESET} ({think_info.get('badge', '')})"
+        )
         print(f"  Endpoint URL   : {TEXT_MUTED}{cfg.get('base_url', 'N/A')}{C_RESET}")
 
         if cfg.get("provider") == "ollama":
@@ -5286,6 +5779,12 @@ def cli_ai(action="menu", *args):
         )
         print(
             f"  {NEON_YELLOW}sentinel ai advise   {C_RESET} {TEXT_MUTED}Run Autonomous System Optimization Plan{C_RESET}"
+        )
+        print(
+            f"  {NEON_YELLOW}sentinel ai thinking {C_RESET} {TEXT_MUTED}Set Thinking: none, low, medium, extra{C_RESET}"
+        )
+        print(
+            f"  {NEON_YELLOW}sentinel ai sessions {C_RESET} {TEXT_MUTED}List Saved Persistent Multi-Sessions{C_RESET}"
         )
         print(
             f'  {NEON_YELLOW}sentinel ai "query"  {C_RESET} {TEXT_MUTED}Ask AI Agent with System Telemetry{C_RESET}\n'
