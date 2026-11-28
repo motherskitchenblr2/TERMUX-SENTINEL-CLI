@@ -425,11 +425,7 @@ def test_query_agentic_ai_with_history(monkeypatch):
 
         def read(self):
             return json.dumps(
-                {
-                    "choices": [
-                        {"message": {"content": "Multi-turn answer received."}}
-                    ]
-                }
+                {"choices": [{"message": {"content": "Multi-turn answer received."}}]}
             ).encode("utf-8")
 
     def fake_urlopen(req, timeout=None):

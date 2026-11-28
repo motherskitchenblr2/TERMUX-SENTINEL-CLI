@@ -675,11 +675,7 @@ def format_thinking_response(raw_resp, thinking_level="low"):
     if not raw_resp:
         return ""
 
-    lvl = (
-        thinking_level.lower().strip()
-        if thinking_level in THINKING_LEVELS
-        else "low"
-    )
+    lvl = thinking_level.lower().strip() if thinking_level in THINKING_LEVELS else "low"
     has_think = bool(re.search(r"<think>(.*?)</think>", raw_resp, flags=re.DOTALL))
 
     if not has_think:
@@ -707,10 +703,7 @@ def format_thinking_response(raw_resp, thinking_level="low"):
         match = re.search(r"<think>(.*?)</think>", raw_resp, flags=re.DOTALL)
         answer = re.sub(r"<think>.*?</think>", "", raw_resp, flags=re.DOTALL).strip()
         thoughts = match.group(1).strip() if match else ""
-        t_lines = [
-            f"{TEXT_MUTED}│  {tl}{C_RESET}"
-            for tl in thoughts.splitlines()[:25]
-        ]
+        t_lines = [f"{TEXT_MUTED}│  {tl}{C_RESET}" for tl in thoughts.splitlines()[:25]]
         if len(thoughts.splitlines()) > 25:
             t_lines.append(
                 f"{TEXT_MUTED}│  ... [{len(thoughts.splitlines()) - 25} lines truncated]{C_RESET}"
@@ -730,7 +723,9 @@ def create_new_session(title=None):
     """Initializes a new persistent chat session and sets it as active."""
     init_sessions_dir()
     cfg = load_ai_config()
-    session_id = f"sess_{time.strftime('%Y%m%d_%H%M%S')}_{int(time.time() * 1000) % 1000:03d}"
+    session_id = (
+        f"sess_{time.strftime('%Y%m%d_%H%M%S')}_{int(time.time() * 1000) % 1000:03d}"
+    )
     new_sess = {
         "session_id": session_id,
         "title": title or f"Session {time.strftime('%b %d, %H:%M')}",
@@ -770,7 +765,8 @@ def save_active_session(session_data):
         return
     session_data["updated_at"] = time.strftime("%Y-%m-%d %H:%M:%S")
     sess_id = session_data.get(
-        "session_id", f"sess_{time.strftime('%Y%m%d_%H%M%S')}_{int(time.time() * 1000) % 1000:03d}"
+        "session_id",
+        f"sess_{time.strftime('%Y%m%d_%H%M%S')}_{int(time.time() * 1000) % 1000:03d}",
     )
     archive_f = os.path.join(SESSIONS_DIR, f"{sess_id}.json")
 
@@ -2270,11 +2266,7 @@ def check_core_prerequisites() -> dict:
 
     if ollama_path and ollama_stat["running"]:
         m_cnt = len(ollama_stat["pulled_models"])
-        m_info = (
-            f"{m_cnt} in storage"
-            if m_cnt
-            else "0 in storage - pull via [o]"
-        )
+        m_info = f"{m_cnt} in storage" if m_cnt else "0 in storage - pull via [o]"
         ollama_disp_ver = f"{ollama_ver} (Live :11434)"
         ollama_disp_role = f"Live 127.0.0.1:11434 ({m_info})"
     elif ollama_path:
@@ -4863,12 +4855,9 @@ def query_agentic_ai(prompt, system_prompt=None, history=None):
     think_info = THINKING_LEVELS.get(thinking_level, THINKING_LEVELS["low"])
 
     sys_content = (
-        (
-            system_prompt
-            or "You are Termux Sentinel Autonomous AI Assistant. Keep responses concise, actionable, and strictly under 150 words."
-        )
-        + f"\n[Thinking Directive: {think_info['name']}]: {think_info['prompt']}"
-    )
+        system_prompt
+        or "You are Termux Sentinel Autonomous AI Assistant. Keep responses concise, actionable, and strictly under 150 words."
+    ) + f"\n[Thinking Directive: {think_info['name']}]: {think_info['prompt']}"
 
     clean_history = []
     if history and isinstance(history, list):
@@ -4886,7 +4875,9 @@ def query_agentic_ai(prompt, system_prompt=None, history=None):
                 g_role = "user" if turn["role"] == "user" else "model"
                 contents.append({"role": g_role, "parts": [{"text": turn["content"]}]})
             if not clean_history:
-                contents.append({"role": "user", "parts": [{"text": f"{sys_content}\n\n{prompt}"}]})
+                contents.append(
+                    {"role": "user", "parts": [{"text": f"{sys_content}\n\n{prompt}"}]}
+                )
             else:
                 contents.append({"role": "user", "parts": [{"text": prompt}]})
             payload_dict = {
@@ -5228,7 +5219,9 @@ def interactive_ai_chat():
 
         lower = user_input.lower().strip()
         if lower in ("/exit", "/quit", ":q", "exit", "quit"):
-            print(f"\n{NEON_YELLOW}Session closed & saved to disk. Returning to Sentinel...{C_RESET}\n")
+            print(
+                f"\n{NEON_YELLOW}Session closed & saved to disk. Returning to Sentinel...{C_RESET}\n"
+            )
             break
 
         if lower in ("/help", "/?", "?"):
@@ -5237,7 +5230,10 @@ def interactive_ai_chat():
             )
             help_cmds = [
                 ("/help, /?", "Show this command manual"),
-                ("/thinking [lvl]", "Set thinking depth: none, low (default), medium, extra"),
+                (
+                    "/thinking [lvl]",
+                    "Set thinking depth: none, low (default), medium, extra",
+                ),
                 ("/session", "List all persistent conversation sessions"),
                 ("/new [title]", "Start a fresh conversation session"),
                 ("/load <#|id>", "Load an earlier saved conversation session"),
@@ -5271,27 +5267,47 @@ def interactive_ai_chat():
                 target_lvl = parts[1].strip()
                 ok, res_name = set_thinking_level(target_lvl)
                 if ok:
-                    print(f"\n{NEON_GREEN}✓ Thinking Level updated to:{C_RESET} {BRIGHT_WHITE}{res_name}{C_RESET}\n")
+                    print(
+                        f"\n{NEON_GREEN}✓ Thinking Level updated to:{C_RESET} {BRIGHT_WHITE}{res_name}{C_RESET}\n"
+                    )
                 else:
                     print(f"\n{NEON_RED}✗ {res_name}{C_RESET}\n")
             else:
                 cfg = load_ai_config()
                 cur_lvl = cfg.get("thinking_level", "low")
-                print(f"\n{NEON_CYAN}╔═ 🧠 OLLAMA & AI THINKING SETTINGS ═══════════════════════════════╗{C_RESET}")
-                print(f" Current Level: {NEON_GREEN}{THINKING_LEVELS.get(cur_lvl, {}).get('name', 'Low')}{C_RESET}\n")
-                print(f"  [1] {BRIGHT_WHITE}No Thinking{C_RESET}    {TEXT_MUTED}- Instant answers; strips <think> blocks completely{C_RESET}")
-                print(f"  [2] {BRIGHT_WHITE}Low Thinking{C_RESET}   {TEXT_MUTED}- Quick 1-2 bullet thoughts; battery & CPU optimized (DEFAULT){C_RESET}")
-                print(f"  [3] {BRIGHT_WHITE}Medium Thinking{C_RESET}{TEXT_MUTED}- Balanced step-by-step reasoning{C_RESET}")
-                print(f"  [4] {BRIGHT_WHITE}Extra Thinking{C_RESET} {TEXT_MUTED}- Deep chain-of-thought analysis{C_RESET}")
-                print(f"{NEON_CYAN}╚══════════════════════════════════════════════════════════════════╝{C_RESET}")
+                print(
+                    f"\n{NEON_CYAN}╔═ 🧠 OLLAMA & AI THINKING SETTINGS ═══════════════════════════════╗{C_RESET}"
+                )
+                print(
+                    f" Current Level: {NEON_GREEN}{THINKING_LEVELS.get(cur_lvl, {}).get('name', 'Low')}{C_RESET}\n"
+                )
+                print(
+                    f"  [1] {BRIGHT_WHITE}No Thinking{C_RESET}    {TEXT_MUTED}- Instant answers; strips <think> blocks completely{C_RESET}"
+                )
+                print(
+                    f"  [2] {BRIGHT_WHITE}Low Thinking{C_RESET}   {TEXT_MUTED}- Quick 1-2 bullet thoughts; battery & CPU optimized (DEFAULT){C_RESET}"
+                )
+                print(
+                    f"  [3] {BRIGHT_WHITE}Medium Thinking{C_RESET}{TEXT_MUTED}- Balanced step-by-step reasoning{C_RESET}"
+                )
+                print(
+                    f"  [4] {BRIGHT_WHITE}Extra Thinking{C_RESET} {TEXT_MUTED}- Deep chain-of-thought analysis{C_RESET}"
+                )
+                print(
+                    f"{NEON_CYAN}╚══════════════════════════════════════════════════════════════════╝{C_RESET}"
+                )
                 try:
-                    choice = input(f"{NEON_YELLOW}Select thinking level [1-4 or Enter to keep]: {C_RESET}").strip()
+                    choice = input(
+                        f"{NEON_YELLOW}Select thinking level [1-4 or Enter to keep]: {C_RESET}"
+                    ).strip()
                 except (KeyboardInterrupt, EOFError):
                     continue
                 choice_map = {"1": "none", "2": "low", "3": "medium", "4": "extra"}
                 if choice in choice_map:
                     _, res_name = set_thinking_level(choice_map[choice])
-                    print(f"\n{NEON_GREEN}✓ Thinking level set to: {res_name}{C_RESET}\n")
+                    print(
+                        f"\n{NEON_GREEN}✓ Thinking level set to: {res_name}{C_RESET}\n"
+                    )
             continue
 
         if lower.startswith("/new"):
@@ -5299,7 +5315,9 @@ def interactive_ai_chat():
             title = parts[1].strip() if len(parts) > 1 else None
             curr_session = create_new_session(title)
             history = []
-            print(f"\n{NEON_GREEN}✓ Started fresh session:{C_RESET} {BRIGHT_WHITE}'{curr_session['title']}'{C_RESET}\n")
+            print(
+                f"\n{NEON_GREEN}✓ Started fresh session:{C_RESET} {BRIGHT_WHITE}'{curr_session['title']}'{C_RESET}\n"
+            )
             continue
 
         if lower.startswith("/load"):
@@ -5326,7 +5344,9 @@ def interactive_ai_chat():
                 continue
             curr_session["title"] = parts[1].strip()
             save_active_session(curr_session)
-            print(f"\n{NEON_GREEN}✓ Session renamed to:{C_RESET} {BRIGHT_WHITE}'{curr_session['title']}'{C_RESET}\n")
+            print(
+                f"\n{NEON_GREEN}✓ Session renamed to:{C_RESET} {BRIGHT_WHITE}'{curr_session['title']}'{C_RESET}\n"
+            )
             continue
 
         if lower.startswith("/session") or lower.startswith("/sessions"):
@@ -5336,10 +5356,14 @@ def interactive_ai_chat():
                 title = " ".join(parts[2:]) if len(parts) > 2 else None
                 curr_session = create_new_session(title)
                 history = []
-                print(f"\n{NEON_GREEN}✓ Started fresh session:{C_RESET} {BRIGHT_WHITE}'{curr_session['title']}'{C_RESET}\n")
+                print(
+                    f"\n{NEON_GREEN}✓ Started fresh session:{C_RESET} {BRIGHT_WHITE}'{curr_session['title']}'{C_RESET}\n"
+                )
             elif subcmd == "load":
                 if len(parts) < 3:
-                    print(f"\n{NEON_YELLOW}Usage: /session load <# or session_id>{C_RESET}\n")
+                    print(
+                        f"\n{NEON_YELLOW}Usage: /session load <# or session_id>{C_RESET}\n"
+                    )
                 else:
                     ok, loaded = load_session_by_id(parts[2])
                     if ok:
@@ -5353,26 +5377,42 @@ def interactive_ai_chat():
                         print(f"\n{NEON_RED}✗ {loaded}{C_RESET}\n")
             elif subcmd == "delete":
                 if len(parts) < 3:
-                    print(f"\n{NEON_YELLOW}Usage: /session delete <# or session_id>{C_RESET}\n")
+                    print(
+                        f"\n{NEON_YELLOW}Usage: /session delete <# or session_id>{C_RESET}\n"
+                    )
                 else:
                     ok, msg = delete_session_by_id(parts[2])
                     print(f"\n{NEON_GREEN if ok else NEON_RED}{msg}{C_RESET}\n")
             else:
                 # List sessions
                 all_sessions = list_saved_sessions()
-                print(f"\n{NEON_CYAN}╔═ 💬 PERSISTENT CONVERSATION SESSIONS ({len(all_sessions)}) ═══════════╗{C_RESET}")
+                print(
+                    f"\n{NEON_CYAN}╔═ 💬 PERSISTENT CONVERSATION SESSIONS ({len(all_sessions)}) ═══════════╗{C_RESET}"
+                )
                 if not all_sessions:
                     print(f"  {TEXT_MUTED}No previous sessions archived yet.{C_RESET}")
                 else:
                     for i, s in enumerate(all_sessions[:10], 1):
-                        is_active = s.get("session_id") == curr_session.get("session_id")
-                        tag = f"{NEON_GREEN}● ACTIVE{C_RESET}" if is_active else f"{TEXT_MUTED}○{C_RESET}"
+                        is_active = s.get("session_id") == curr_session.get(
+                            "session_id"
+                        )
+                        tag = (
+                            f"{NEON_GREEN}● ACTIVE{C_RESET}"
+                            if is_active
+                            else f"{TEXT_MUTED}○{C_RESET}"
+                        )
                         title_disp = s.get("title", "Untitled")[:30]
                         turns_cnt = len(s.get("history", []))
                         upd = s.get("updated_at", "")[5:16]
-                        print(f"  [{i:2d}] {tag} {BRIGHT_WHITE}{title_disp:<30}{C_RESET} {NEON_CYAN}{turns_cnt:2d} msgs{C_RESET} {TEXT_MUTED}{upd}{C_RESET}")
-                print(f"{NEON_CYAN}╚══════════════════════════════════════════════════════════════════╝{C_RESET}")
-                print(f"{TEXT_MUTED}Commands: /session new [title], /session load <#>, /session delete <#>{C_RESET}\n")
+                        print(
+                            f"  [{i:2d}] {tag} {BRIGHT_WHITE}{title_disp:<30}{C_RESET} {NEON_CYAN}{turns_cnt:2d} msgs{C_RESET} {TEXT_MUTED}{upd}{C_RESET}"
+                        )
+                print(
+                    f"{NEON_CYAN}╚══════════════════════════════════════════════════════════════════╝{C_RESET}"
+                )
+                print(
+                    f"{TEXT_MUTED}Commands: /session new [title], /session load <#>, /session delete <#>{C_RESET}\n"
+                )
             continue
 
         if lower == "/status":
@@ -5385,7 +5425,9 @@ def interactive_ai_chat():
             history.clear()
             curr_session["history"] = []
             save_active_session(curr_session)
-            print(f"\n{NEON_GREEN}✓ Conversation memory for active session cleared.{C_RESET}\n")
+            print(
+                f"\n{NEON_GREEN}✓ Conversation memory for active session cleared.{C_RESET}\n"
+            )
             continue
 
         if lower in ("/model", "/provider", "/setup"):
@@ -5469,7 +5511,9 @@ def interactive_ai_chat():
                     f"\n{NEON_GREEN}✓ Transcript exported successfully:{C_RESET} {BRIGHT_WHITE}{out_path}{C_RESET}\n"
                 )
             else:
-                print(f"\n{NEON_RED}✗ Failed to export transcript: {out_path}{C_RESET}\n")
+                print(
+                    f"\n{NEON_RED}✗ Failed to export transcript: {out_path}{C_RESET}\n"
+                )
             continue
 
         if lower.startswith("/sh ") or user_input.startswith("!"):
@@ -5569,12 +5613,26 @@ def interactive_ai_chat():
                     print(f"{NEON_PINK}│{C_RESET}  {BRIGHT_WHITE}{w}{C_RESET}")
         print(f"{NEON_PINK}╰" + "─" * (cols - 2) + f"{C_RESET}\n")
 
-        history.append({"role": "user", "content": user_input, "timestamp": time.strftime("%Y-%m-%d %H:%M:%S")})
-        history.append({"role": "assistant", "content": resp, "timestamp": time.strftime("%Y-%m-%d %H:%M:%S")})
+        history.append(
+            {
+                "role": "user",
+                "content": user_input,
+                "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
+            }
+        )
+        history.append(
+            {
+                "role": "assistant",
+                "content": resp,
+                "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
+            }
+        )
 
         # Auto-update generic session title from first user query
         if curr_session.get("title", "").startswith("Session ") and user_input:
-            curr_session["title"] = user_input[:32] + ("..." if len(user_input) > 32 else "")
+            curr_session["title"] = user_input[:32] + (
+                "..." if len(user_input) > 32 else ""
+            )
 
         curr_session["history"] = history
         save_active_session(curr_session)
@@ -5687,9 +5745,7 @@ def cli_ai(action="menu", *args):
             else:
                 ok, s = load_session_by_id(args[1])
                 if ok:
-                    print(
-                        f"{NEON_GREEN}✓ Loaded session: {s.get('title')}{C_RESET}"
-                    )
+                    print(f"{NEON_GREEN}✓ Loaded session: {s.get('title')}{C_RESET}")
                 else:
                     print(f"{NEON_RED}{s}{C_RESET}")
         else:
