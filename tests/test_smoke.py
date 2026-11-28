@@ -351,3 +351,112 @@ def test_ai_runtime_status_detects_storage_presence():
     assert "model_in_storage" in stat
     # Since nonexistent_model_xyz is not in storage, model_in_storage must be False
     assert stat["model_in_storage"] is False
+
+
+def test_copy_to_clipboard_empty():
+    """Verify copying empty text fails safely."""
+    assert hasattr(Termux_Sentinel, "copy_to_clipboard")
+    ok, msg = Termux_Sentinel.copy_to_clipboard("")
+    assert ok is False
+    assert "Nothing to copy" in msg
+
+
+def test_copy_to_clipboard_mock(monkeypatch):
+    """Verify copy_to_clipboard with mocked clipboard command."""
+    monkeypatch.setattr(
+        Termux_Sentinel.shutil,
+        "which",
+        lambda cmd: True if cmd == "termux-clipboard-set" else False,
+    )
+
+    class FakeProcess:
+        returncode = 0
+
+        def communicate(self, input=None, timeout=None):
+            return b"", b""
+
+    monkeypatch.setattr(
+        Termux_Sentinel.subprocess, "Popen", lambda *args, **kwargs: FakeProcess()
+    )
+    ok, msg = Termux_Sentinel.copy_to_clipboard("Test copy data")
+    assert ok is True
+    assert "termux-clipboard-set" in msg
+
+
+def test_export_chat_transcript(tmp_path, monkeypatch):
+    """Verify exporting chat transcript writes markdown file with turns."""
+    assert hasattr(Termux_Sentinel, "export_chat_transcript")
+    monkeypatch.setattr(Termux_Sentinel, "TRANSCRIPTS_DIR", str(tmp_path))
+    history = [
+        {"role": "user", "content": "How much free storage do I have?"},
+        {"role": "assistant", "content": "You have 10.3 GB free."},
+    ]
+    ok, path_out = Termux_Sentinel.export_chat_transcript(history, "test_session")
+    assert ok is True
+    assert path_out.endswith("test_session.md")
+    p = Path(path_out)
+    assert p.exists()
+    content = p.read_text(encoding="utf-8")
+    assert "Termux Sentinel AI Chat Transcript" in content
+    assert "How much free storage do I have?" in content
+    assert "You have 10.3 GB free." in content
+
+
+def test_query_agentic_ai_with_history(monkeypatch):
+    """Verify query_agentic_ai correctly formats multi-turn history for OpenAI-compatible providers."""
+    assert hasattr(Termux_Sentinel, "query_agentic_ai")
+    cfg = {
+        "provider": "groq",
+        "model": "llama-3.3-70b-versatile",
+        "api_key": "test_groq_key",
+        "base_url": "https://api.groq.com/openai/v1",
+        "agentic_enabled": True,
+    }
+    monkeypatch.setattr(Termux_Sentinel, "load_ai_config", lambda: cfg)
+
+    captured_payload = {}
+
+    class FakeResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc_val, exc_tb):
+            pass
+
+        def read(self):
+            return json.dumps(
+                {
+                    "choices": [
+                        {"message": {"content": "Multi-turn answer received."}}
+                    ]
+                }
+            ).encode("utf-8")
+
+    def fake_urlopen(req, timeout=None):
+        nonlocal captured_payload
+        captured_payload = json.loads(req.data.decode("utf-8"))
+        return FakeResponse()
+
+    monkeypatch.setattr(Termux_Sentinel.urllib.request, "urlopen", fake_urlopen)
+
+    history = [
+        {"role": "user", "content": "Hello Sentinel"},
+        {"role": "assistant", "content": "Hello! How can I assist you today?"},
+    ]
+    resp = Termux_Sentinel.query_agentic_ai("Check my disk space", history=history)
+    assert resp == "Multi-turn answer received."
+    assert "messages" in captured_payload
+    # Should include system prompt, 2 history turns, and 1 current user prompt = 4 messages
+    assert len(captured_payload["messages"]) == 4
+    assert captured_payload["messages"][-1]["content"] == "Check my disk space"
+
+
+def test_interactive_ai_chat_immediate_exit(monkeypatch, capsys):
+    """Verify interactive_ai_chat terminates gracefully on /exit command."""
+    assert hasattr(Termux_Sentinel, "interactive_ai_chat")
+    inputs = iter(["/exit"])
+    monkeypatch.setattr("builtins.input", lambda prompt="": next(inputs))
+    Termux_Sentinel.interactive_ai_chat()
+    out = capsys.readouterr().out
+    assert "AI CHAT STUDIO" in out
+    assert "Session closed" in out

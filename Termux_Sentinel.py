@@ -16,6 +16,7 @@ import shutil
 import signal
 import subprocess  # nosec B404
 import sys
+import textwrap
 import time
 import traceback
 import unicodedata
@@ -67,6 +68,7 @@ else:
 VAULT_FILE = os.path.join(VAULT_DIR, "vault.json")
 CRASH_LOG_FILE = os.path.join(VAULT_DIR, "crash.log")
 AI_CONFIG_FILE = os.path.join(VAULT_DIR, "ai_config.json")
+TRANSCRIPTS_DIR = os.path.join(VAULT_DIR, "transcripts")
 UBUNTU_ROOT = (
     "/data/data/com.termux/files/usr/var/lib/proot-distro/containers/ubuntu/rootfs"
     if IS_TERMUX
@@ -1694,14 +1696,21 @@ def render_main_view(clean_targets, update_targets, selected):
     )
     print(
         make_box_row(
-            f"{NEON_CYAN}[f]{C_RESET} Refresh State   {NEON_GREEN}[r]{C_RESET} Cloud Sync",
+            f"{NEON_GREEN}[i]{C_RESET} AI Chat Studio  {NEON_GREEN}[r]{C_RESET} Cloud Sync",
             border_color=NEON_CYAN,
             cols=cols,
         )
     )
     print(
         make_box_row(
-            f"{NEON_YELLOW}[z]{C_RESET} Pause Screen    {NEON_RED}[q]{C_RESET} Cancel & Exit",
+            f"{NEON_CYAN}[f]{C_RESET} Refresh State   {NEON_YELLOW}[z]{C_RESET} Pause Screen",
+            border_color=NEON_CYAN,
+            cols=cols,
+        )
+    )
+    print(
+        make_box_row(
+            f"{NEON_RED}[q]{C_RESET} Cancel & Exit",
             border_color=NEON_CYAN,
             cols=cols,
         )
@@ -2822,6 +2831,8 @@ def main():
                 f"\n{NEON_GREEN if new_s else NEON_YELLOW}Agentic AI Mode is now {tag}.{C_RESET}"
             )
             time.sleep(1.0)
+        elif choice in ("i", "chat", "ai"):
+            interactive_ai_chat()
         elif choice == "x":
             run_agentic_ai_advisor(
                 clean_targets, apps_targets, bot_scripts, running_daemons
@@ -4563,8 +4574,8 @@ def interactive_ai_setup():
     time.sleep(1.5)
 
 
-def query_agentic_ai(prompt, system_prompt=None):
-    """Executes an AI inference request using configured local Ollama or cloud provider."""
+def query_agentic_ai(prompt, system_prompt=None, history=None):
+    """Executes an AI inference request using configured local Ollama or cloud provider with multi-turn support."""
     cfg = load_ai_config()
     p_id = cfg.get("provider", "ollama")
     p_info = AI_PROVIDERS.get(p_id, AI_PROVIDERS["ollama"])
@@ -4575,18 +4586,33 @@ def query_agentic_ai(prompt, system_prompt=None):
 
     sys_content = (
         system_prompt
-        or "You are Termux Sentinel Autonomous AI Agent. Keep responses concise, actionable, and strictly under 150 words."
+        or "You are Termux Sentinel Autonomous AI Assistant. Keep responses concise, actionable, and strictly under 150 words."
     )
+
+    clean_history = []
+    if history and isinstance(history, list):
+        for turn in history[-16:]:
+            if isinstance(turn, dict) and "role" in turn and "content" in turn:
+                clean_history.append({"role": turn["role"], "content": turn["content"]})
 
     try:
         if p_type == "gemini":
             url = f"{base_url}/models/{model}:generateContent?key={api_key}"
-            payload = json.dumps(
-                {
-                    "contents": [{"parts": [{"text": f"{sys_content}\n\n{prompt}"}]}],
-                    "generationConfig": {"temperature": 0.3, "maxOutputTokens": 600},
-                }
-            ).encode("utf-8")
+            contents = []
+            for turn in clean_history:
+                g_role = "user" if turn["role"] == "user" else "model"
+                contents.append({"role": g_role, "parts": [{"text": turn["content"]}]})
+            if not clean_history:
+                contents.append({"role": "user", "parts": [{"text": f"{sys_content}\n\n{prompt}"}]})
+            else:
+                contents.append({"role": "user", "parts": [{"text": prompt}]})
+            payload_dict = {
+                "contents": contents,
+                "generationConfig": {"temperature": 0.3, "maxOutputTokens": 800},
+            }
+            if clean_history:
+                payload_dict["systemInstruction"] = {"parts": [{"text": sys_content}]}
+            payload = json.dumps(payload_dict).encode("utf-8")
             req = urllib.request.Request(
                 url,
                 data=payload,
@@ -4600,12 +4626,16 @@ def query_agentic_ai(prompt, system_prompt=None):
                 return data["candidates"][0]["content"]["parts"][0]["text"].strip()
         elif p_type == "anthropic":
             url = f"{base_url}/messages"
+            messages = []
+            for turn in clean_history:
+                messages.append({"role": turn["role"], "content": turn["content"]})
+            messages.append({"role": "user", "content": prompt})
             payload = json.dumps(
                 {
                     "model": model,
                     "system": sys_content,
-                    "messages": [{"role": "user", "content": prompt}],
-                    "max_tokens": 600,
+                    "messages": messages,
+                    "max_tokens": 800,
                 }
             ).encode("utf-8")
             req = urllib.request.Request(
@@ -4634,36 +4664,68 @@ def query_agentic_ai(prompt, system_prompt=None):
                     f"Error: Model '{model}' is not downloaded in Ollama storage.\n"
                     f"Please run 'sentinel ai inspect' or 'ollama pull {model}' to download it first."
                 )
-            url = f"{base_url}/api/generate"
-            payload = json.dumps(
+            # Attempt /api/chat with full multi-turn messages
+            url_chat = f"{base_url}/api/chat"
+            messages = [{"role": "system", "content": sys_content}]
+            for turn in clean_history:
+                messages.append({"role": turn["role"], "content": turn["content"]})
+            messages.append({"role": "user", "content": prompt})
+            payload_chat = json.dumps(
                 {
                     "model": model,
-                    "prompt": f"{sys_content}\n\nUser Question:\n{prompt}\n\nResponse:",
+                    "messages": messages,
                     "stream": False,
                 }
             ).encode("utf-8")
-            req = urllib.request.Request(
-                url,
-                data=payload,
+            req_chat = urllib.request.Request(
+                url_chat,
+                data=payload_chat,
                 headers={
                     "Content-Type": "application/json",
                     "User-Agent": "TermuxSentinel/2.0",
                 },
             )
-            with urllib.request.urlopen(req, timeout=30.0) as resp:
-                data = json.loads(resp.read().decode("utf-8"))
-                return data.get("response", "").strip()
+            try:
+                with urllib.request.urlopen(req_chat, timeout=30.0) as resp:
+                    data = json.loads(resp.read().decode("utf-8"))
+                    return data.get("message", {}).get("content", "").strip()
+            except Exception:
+                # Fallback to /api/generate
+                url_gen = f"{base_url}/api/generate"
+                prompt_full = f"{sys_content}\n\n"
+                for turn in clean_history:
+                    prompt_full += f"{turn['role'].upper()}: {turn['content']}\n"
+                prompt_full += f"USER: {prompt}\nASSISTANT: "
+                payload_gen = json.dumps(
+                    {
+                        "model": model,
+                        "prompt": prompt_full,
+                        "stream": False,
+                    }
+                ).encode("utf-8")
+                req_gen = urllib.request.Request(
+                    url_gen,
+                    data=payload_gen,
+                    headers={
+                        "Content-Type": "application/json",
+                        "User-Agent": "TermuxSentinel/2.0",
+                    },
+                )
+                with urllib.request.urlopen(req_gen, timeout=30.0) as resp:
+                    data = json.loads(resp.read().decode("utf-8"))
+                    return data.get("response", "").strip()
         else:
             url = f"{base_url}/chat/completions"
+            messages = [{"role": "system", "content": sys_content}]
+            for turn in clean_history:
+                messages.append({"role": turn["role"], "content": turn["content"]})
+            messages.append({"role": "user", "content": prompt})
             payload = json.dumps(
                 {
                     "model": model,
-                    "messages": [
-                        {"role": "system", "content": sys_content},
-                        {"role": "user", "content": prompt},
-                    ],
+                    "messages": messages,
                     "temperature": 0.3,
-                    "max_tokens": 600,
+                    "max_tokens": 800,
                 }
             ).encode("utf-8")
             req = urllib.request.Request(
@@ -4680,6 +4742,399 @@ def query_agentic_ai(prompt, system_prompt=None):
                 return data["choices"][0]["message"]["content"].strip()
     except Exception as e:
         return f"Inference Failed ({p_info['name']}): {e}"
+
+
+def copy_to_clipboard(text):
+    """Copies text to Android or system clipboard using Termux API or platform clipboards."""
+    if not text:
+        return False, "Nothing to copy."
+    # 1. Termux API (Android)
+    if shutil.which("termux-clipboard-set"):
+        try:
+            p = subprocess.Popen(
+                ["termux-clipboard-set"],
+                stdin=subprocess.PIPE,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+            p.communicate(input=text.encode("utf-8"), timeout=3)
+            if p.returncode == 0:
+                return True, "Copied to Android clipboard via termux-clipboard-set."
+        except Exception:
+            pass
+    # 2. Linux Wayland
+    if shutil.which("wl-copy"):
+        try:
+            p = subprocess.Popen(
+                ["wl-copy"],
+                stdin=subprocess.PIPE,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+            p.communicate(input=text.encode("utf-8"), timeout=3)
+            if p.returncode == 0:
+                return True, "Copied to clipboard via wl-copy."
+        except Exception:
+            pass
+    # 3. Linux X11
+    if shutil.which("xclip"):
+        try:
+            p = subprocess.Popen(
+                ["xclip", "-selection", "clipboard"],
+                stdin=subprocess.PIPE,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+            p.communicate(input=text.encode("utf-8"), timeout=3)
+            if p.returncode == 0:
+                return True, "Copied to clipboard via xclip."
+        except Exception:
+            pass
+    # 4. Windows
+    if shutil.which("clip"):
+        try:
+            p = subprocess.Popen(
+                ["clip"],
+                stdin=subprocess.PIPE,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+            p.communicate(input=text.encode("utf-8"), timeout=3)
+            if p.returncode == 0:
+                return True, "Copied to clipboard via clip."
+        except Exception:
+            pass
+    return False, "Clipboard tool not found (install termux-api or xclip)."
+
+
+def export_chat_transcript(history, filename=None):
+    """Exports chat session history to a markdown file in ~/.config/termux_sentinel/transcripts/."""
+    try:
+        os.makedirs(TRANSCRIPTS_DIR, exist_ok=True)
+        if not filename:
+            ts = time.strftime("%Y%m%d_%H%M%S")
+            filename = f"sentinel_chat_{ts}.md"
+        elif not filename.endswith(".md"):
+            filename += ".md"
+        safe_fname = os.path.basename(filename)
+        out_path = os.path.join(TRANSCRIPTS_DIR, safe_fname)
+
+        cfg = load_ai_config()
+        used, total, free, pct = get_disk_usage()
+
+        lines = [
+            "# Termux Sentinel AI Chat Transcript",
+            f"- **Date**: {time.strftime('%Y-%m-%d %H:%M:%S')}",
+            f"- **Device**: {get_device_name()}",
+            f"- **Storage**: {used} used / {free} free of {total} ({pct} full)",
+            f"- **Provider**: {cfg.get('provider_name', 'Ollama')}",
+            f"- **Model**: {cfg.get('model', 'None')}",
+            "",
+            "---",
+            "",
+        ]
+
+        if not history:
+            lines.append("*(No conversation turns recorded)*\n")
+        else:
+            for turn in history:
+                role = turn.get("role", "user")
+                content = turn.get("content", "")
+                if role == "user":
+                    lines.append(f"### 👤 User\n\n{content}\n")
+                elif role == "assistant":
+                    lines.append(f"### 🤖 Sentinel AI\n\n{content}\n")
+                lines.append("---\n")
+
+        with open(out_path, "w", encoding="utf-8") as f:
+            f.write("\n".join(lines))
+        return True, out_path
+    except Exception as e:
+        return False, str(e)
+
+
+def interactive_ai_chat():
+    """Dedicated interactive AI Chat Studio TUI with multi-turn memory, slash commands & telemetry injection."""
+    cols = get_term_cols()
+    history = []
+
+    print("\033[2J\033[H", end="")
+    print_large_header()
+    render_hud_box("AI CHAT STUDIO")
+
+    cfg = load_ai_config()
+    p_name = cfg.get("provider_name", "Ollama")
+    m_name = cfg.get("model", "None")
+
+    banner_title = "═ AI CHAT STUDIO ═"
+    print(
+        f"\n{NEON_CYAN}╔═{banner_title}"
+        + "═" * max(0, cols - 4 - visible_len(banner_title))
+        + f"╗{C_RESET}"
+    )
+    print(
+        make_box_row(
+            f"{C_BOLD}{BRIGHT_WHITE}Interactive Autonomous Terminal AI Assistant{C_RESET}",
+            border_color=NEON_CYAN,
+            cols=cols,
+        )
+    )
+    print(
+        make_box_row(
+            f"Provider: {NEON_GREEN}{p_name}{C_RESET} | Model: {NEON_CYAN}{m_name}{C_RESET}",
+            border_color=NEON_CYAN,
+            cols=cols,
+        )
+    )
+    print(
+        make_box_row(
+            f"{TEXT_MUTED}Commands: /help, /status, /model, /clean, /hunt, /copy, /export, /sh, /exit{C_RESET}",
+            border_color=NEON_CYAN,
+            cols=cols,
+        )
+    )
+    print(f"{NEON_CYAN}╚" + "═" * (cols - 2) + f"╝{C_RESET}\n")
+
+    while True:
+        try:
+            prompt_marker = (
+                f"{NEON_GREEN}╭─ 👤 YOU{C_RESET} {TEXT_MUTED}[type /help for commands, /exit to quit]{C_RESET}\n"
+                f"{NEON_GREEN}╰─➤ {C_RESET}"
+            )
+            user_input = input(prompt_marker).strip()
+        except (KeyboardInterrupt, EOFError):
+            print(f"\n{NEON_YELLOW}Exiting AI Chat Studio...{C_RESET}\n")
+            break
+
+        if not user_input:
+            continue
+
+        lower = user_input.lower()
+        if lower in ("/exit", "/quit", ":q", "exit", "quit"):
+            print(f"\n{NEON_YELLOW}Session closed. Returning to Sentinel...{C_RESET}\n")
+            break
+
+        if lower in ("/help", "/?", "?"):
+            print(
+                f"\n{NEON_CYAN}╔═ 📖 AI CHAT STUDIO SLASH COMMANDS ═══════════════════════════════╗{C_RESET}"
+            )
+            help_cmds = [
+                ("/help, /?", "Show this command manual"),
+                ("/status", "Display live system telemetry HUD"),
+                ("/model", "Switch AI provider, model or update API key"),
+                ("/inspect", "Audit hardware & recommend offline Ollama models"),
+                ("/clean", "Execute safe cache purge directly"),
+                ("/hunt [MB]", "Scan bloat directories (default: 100MB)"),
+                ("/doctor", "Run system diagnostic health check"),
+                ("/repair", "Auto-heal broken packages & dependencies"),
+                ("/vault", "List protected directories and active shields"),
+                ("/copy", "Copy last AI response to system/Android clipboard"),
+                ("/export [name]", "Save chat transcript to markdown in transcripts/"),
+                ("/clear, /reset", "Clear conversation context and memory"),
+                ("/sh <cmd>, !<cmd>", "Run shell command and analyze output in chat"),
+                ("/exit, /quit", "Exit AI Chat Studio and return to Sentinel"),
+            ]
+            for cmd_name, desc in help_cmds:
+                print(
+                    f"  {NEON_YELLOW}{cmd_name:<18}{C_RESET} {BRIGHT_WHITE}{desc}{C_RESET}"
+                )
+            print(
+                f"{NEON_CYAN}╚══════════════════════════════════════════════════════════════════╝{C_RESET}\n"
+            )
+            continue
+
+        if lower == "/status":
+            print()
+            render_hud_box("LIVE TELEMETRY")
+            print()
+            continue
+
+        if lower in ("/clear", "/reset"):
+            history.clear()
+            print(f"\n{NEON_GREEN}✓ Conversation memory cleared.{C_RESET}\n")
+            continue
+
+        if lower in ("/model", "/provider", "/setup"):
+            interactive_ai_setup()
+            cfg = load_ai_config()
+            p_name = cfg.get("provider_name", "Ollama")
+            m_name = cfg.get("model", "None")
+            print(f"\n{NEON_GREEN}✓ Active AI set to: {p_name} ({m_name}){C_RESET}\n")
+            continue
+
+        if lower in ("/inspect", "/hardware", "/hw"):
+            render_hardware_inspection_view()
+            cfg = load_ai_config()
+            continue
+
+        if lower == "/clean":
+            print(f"\n{NEON_YELLOW}Running safe cache cleanup...{C_RESET}")
+            cli_clean(safe_only=True, dry_run=False, auto_yes=True)
+            print()
+            continue
+
+        if lower.startswith("/hunt"):
+            parts = user_input.split()
+            mb = 100
+            if len(parts) > 1 and parts[1].isdigit():
+                mb = int(parts[1])
+            print(f"\n{NEON_YELLOW}Scanning for bloat directories >{mb}MB...{C_RESET}")
+            cli_hunt(threshold_mb=mb)
+            print()
+            continue
+
+        if lower == "/doctor":
+            print(f"\n{NEON_YELLOW}Running Sentinel System Diagnostics...{C_RESET}")
+            cli_repair(auto_fix=False)
+            print()
+            continue
+
+        if lower == "/repair":
+            print(f"\n{NEON_YELLOW}Auto-repairing system dependencies...{C_RESET}")
+            cli_repair(auto_fix=True)
+            print()
+            continue
+
+        if lower == "/vault":
+            items = load_vault()
+            print(
+                f"\n{NEON_CYAN}╔═ 🛡️ ACTIVE PRESERVATION SHIELDS ({len(items)}) ═══════════════════╗{C_RESET}"
+            )
+            for it in items:
+                lock_icon = "🔒" if it.get("locked") else "🛡️"
+                print(
+                    f"  {lock_icon} {BRIGHT_WHITE}#{it.get('id', 0):<2} {it.get('name')}{C_RESET}: {TEXT_MUTED}{it.get('pattern')}{C_RESET}"
+                )
+            print(
+                f"{NEON_CYAN}╚══════════════════════════════════════════════════════════════════╝{C_RESET}\n"
+            )
+            continue
+
+        if lower == "/copy":
+            last_resp = None
+            for turn in reversed(history):
+                if turn.get("role") == "assistant":
+                    last_resp = turn.get("content", "")
+                    break
+            if not last_resp:
+                print(f"\n{NEON_YELLOW}No AI response in history to copy.{C_RESET}\n")
+            else:
+                ok, msg = copy_to_clipboard(last_resp)
+                if ok:
+                    print(f"\n{NEON_GREEN}✓ {msg}{C_RESET}\n")
+                else:
+                    print(f"\n{NEON_RED}✗ {msg}{C_RESET}\n")
+            continue
+
+        if lower.startswith("/export"):
+            parts = user_input.split(maxsplit=1)
+            fname = parts[1].strip() if len(parts) > 1 else None
+            ok, out_path = export_chat_transcript(history, fname)
+            if ok:
+                print(
+                    f"\n{NEON_GREEN}✓ Transcript exported successfully:{C_RESET} {BRIGHT_WHITE}{out_path}{C_RESET}\n"
+                )
+            else:
+                print(f"\n{NEON_RED}✗ Failed to export transcript: {out_path}{C_RESET}\n")
+            continue
+
+        if lower.startswith("/sh ") or user_input.startswith("!"):
+            cmd = (
+                user_input[4:].strip()
+                if lower.startswith("/sh ")
+                else user_input[1:].strip()
+            )
+            if not cmd:
+                print(f"\n{NEON_YELLOW}Usage: /sh <command> or !<command>{C_RESET}\n")
+                continue
+            print(
+                f"\n{NEON_CYAN}╭─ 💻 EXEC: {BRIGHT_WHITE}{cmd}{NEON_CYAN} ─────────────────────────────{C_RESET}"
+            )
+            try:
+                proc = subprocess.run(
+                    cmd,
+                    shell=True,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                    text=True,
+                    timeout=30,
+                )
+                output = proc.stdout.strip()
+                if output:
+                    for line in output.splitlines()[:25]:
+                        print(f"{NEON_CYAN}│{C_RESET}  {BRIGHT_WHITE}{line}{C_RESET}")
+                    if len(output.splitlines()) > 25:
+                        print(
+                            f"{NEON_CYAN}│{C_RESET}  {TEXT_MUTED}... [{len(output.splitlines()) - 25} lines truncated]{C_RESET}"
+                        )
+                else:
+                    print(
+                        f"{NEON_CYAN}│{C_RESET}  {TEXT_MUTED}(no output, exit code: {proc.returncode}){C_RESET}"
+                    )
+                print(
+                    f"{NEON_CYAN}╰──────────────────────────────────────────────────────────{C_RESET}\n"
+                )
+                history.append(
+                    {
+                        "role": "user",
+                        "content": f"[Executed Shell Command: `{cmd}`]\nOutput (Exit Code {proc.returncode}):\n{output[:1500]}",
+                    }
+                )
+                history.append(
+                    {
+                        "role": "assistant",
+                        "content": f"I observed the output of `{cmd}` (exit code {proc.returncode}). What would you like to analyze or do next with it?",
+                    }
+                )
+            except subprocess.TimeoutExpired:
+                print(f"{NEON_RED}│ Command timed out after 30 seconds.{C_RESET}")
+                print(
+                    f"{NEON_CYAN}╰──────────────────────────────────────────────────────────{C_RESET}\n"
+                )
+            except Exception as e:
+                print(f"{NEON_RED}│ Execution error: {e}{C_RESET}")
+                print(
+                    f"{NEON_CYAN}╰──────────────────────────────────────────────────────────{C_RESET}\n"
+                )
+            continue
+
+        cfg = load_ai_config()
+        used, total, free, pct = get_disk_usage()
+        v_cnt = len(load_vault())
+        active_model = cfg.get("model", "qwen2.5:3b")
+
+        system_prompt = (
+            f"You are Termux Sentinel Autonomous AI Assistant running locally inside Termux Android CLI.\n"
+            f"System Telemetry: Device={get_device_name()}, Storage={used} used / {free} free of {total} ({pct} full), "
+            f"Active Vault Shields={v_cnt}.\n"
+            f"Critical Safety Rule: Never suggest deleting WhatsApp directories (com.whatsapp, com.whatsapp.w4b). "
+            f"Be concise, highly practical, technically precise, and formatted in terminal-friendly markdown."
+        )
+
+        animate_safe("THINKING", f"Querying {active_model}...", duration=0.6)
+        resp = query_agentic_ai(
+            user_input, system_prompt=system_prompt, history=history
+        )
+
+        print(
+            f"\n{NEON_PINK}╭─ 🤖 SENTINEL AI {C_RESET}{TEXT_MUTED}[{active_model}]{NEON_PINK} "
+            + "─" * max(0, cols - visible_len(active_model) - 23)
+            + f"{C_RESET}"
+        )
+        wrapper = textwrap.TextWrapper(
+            width=max(36, cols - 6), break_long_words=False, replace_whitespace=False
+        )
+        for line in resp.splitlines():
+            if not line.strip():
+                print(f"{NEON_PINK}│{C_RESET}")
+            else:
+                wrapped_lines = wrapper.wrap(line)
+                for w in wrapped_lines:
+                    print(f"{NEON_PINK}│{C_RESET}  {BRIGHT_WHITE}{w}{C_RESET}")
+        print(f"{NEON_PINK}╰" + "─" * (cols - 2) + f"{C_RESET}\n")
+
+        history.append({"role": "user", "content": user_input})
+        history.append({"role": "assistant", "content": resp})
 
 
 def run_agentic_ai_advisor(
@@ -4758,7 +5213,9 @@ def run_agentic_ai_advisor(
 
 def cli_ai(action="menu", *args):
     """CLI subcommand router for Sentinel AI features."""
-    if action in ("inspect", "hardware", "hw"):
+    if action in ("chat", "talk", "repl", "interactive", "studio"):
+        interactive_ai_chat()
+    elif action in ("inspect", "hardware", "hw"):
         render_hardware_inspection_view()
     elif action in ("setup", "config", "providers", "provider"):
         interactive_ai_setup()
@@ -4815,6 +5272,9 @@ def cli_ai(action="menu", *args):
                     f"  {TEXT_MUTED}Run 'sentinel ai inspect' or 'ollama pull {cfg.get('model')}' to download it.{C_RESET}"
                 )
         print(f"\n{C_BOLD}{BRIGHT_WHITE}AI SUBCOMMANDS:{C_RESET}")
+        print(
+            f"  {NEON_YELLOW}sentinel ai chat     {C_RESET} {TEXT_MUTED}Interactive Cyber AI Chat Studio{C_RESET}"
+        )
         print(
             f"  {NEON_YELLOW}sentinel ai inspect  {C_RESET} {TEXT_MUTED}Audit Device & Suggest Ollama Models{C_RESET}"
         )
@@ -4878,6 +5338,7 @@ def cli_help():
         ("sentinel ai inspect", "Hardware & Offline Models"),
         ("sentinel ai toggle", "Toggle AI Mode (ON/OFF)"),
         ("sentinel ai advise", "AI Autonomous System Plan"),
+        ("sentinel chat", "Interactive AI Chat Studio"),
         ("sentinel prereqs", "Check Python, Rclone & Ollama"),
         ("sentinel help", "CLI Command Manual"),
     ]
@@ -4962,6 +5423,8 @@ def cli_entrypoint():
         cli_repair(auto_fix=auto_fix)
     elif cmd in ("heal", "self-heal", "selfheal", "rescue"):
         self_heal_sentinel(silent=False)
+    elif cmd in ("chat", "talk", "repl", "interactive", "studio"):
+        interactive_ai_chat()
     elif cmd in ("ai", "agent", "llm"):
         sub = sys.argv[2].lower() if len(sys.argv) > 2 else "menu"
         extra = sys.argv[3:] if len(sys.argv) > 3 else []

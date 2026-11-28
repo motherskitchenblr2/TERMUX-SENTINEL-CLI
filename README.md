@@ -123,7 +123,9 @@ sentinel repair        # Auto-heal broken dependencies, unconfigured dpkg, and c
 sentinel heal          # Audit and self-heal Sentinel configs, permissions, and vault integrity
 
 # 🤖 Agentic AI & Hardware Capacity Inspector
+sentinel chat          # Open Interactive Cyber AI Chat Studio (REPL)
 sentinel ai            # View Agentic AI Status & Active Model
+sentinel ai chat       # Dedicated AI Chat Studio with Multi-Turn Memory
 sentinel ai inspect    # Hardware Capacity Audit & Offline Ollama Advisor
 sentinel ai setup      # Connect AI Providers (OpenCode/TokenHarbor/Gemini/Groq/Ollama)
 sentinel ai toggle     # Toggle between Autonomous Agentic AI & Manual Mode
@@ -148,6 +150,7 @@ When running `sentinel` without arguments, navigate using single keystrokes:
 | **`[m]`** | **Apps Manager** | Inspect and uninstall developer tools and agentic CLIs |
 | **`[s]`** | **Bot Detective** | Audit rogue scripts and terminate silent daemons |
 | **`[d]`** | **Doctor & Heal** | Diagnose and repair broken packages, corrupt caches & stale locks |
+| **`[i]`** | **AI Chat Studio** | Launch interactive multi-turn AI Studio with slash commands |
 | **`[g]`** | **Toggle AI Agent** | Switch between Autonomous Agentic AI and Manual Mode |
 | **`[x]`** | **AI Advisor** | Run AI system telemetry analysis & optimization plan |
 | **`[o]`** | **Ollama Inspector** | Hardware capacity audit & offline small model puller |
@@ -174,6 +177,28 @@ The Preservation Vault (`vault.json`) guarantees that critical personal data, ac
 - **Secondary Cloud Backup Target:** `Remote_Backup`
 
 Users can add custom directory paths or wildcard patterns at any time via `sentinel vault add <pattern>` or by pressing `[p]` in the TUI.
+
+---
+
+## 🤖 Interactive AI Chat Studio & Slash Commands
+
+Termux-Sentinel features a dedicated interactive AI Chat Studio (`sentinel chat` or key `[i]`), bringing an Antigravity/Cyber REPL experience directly into Termux with multi-turn memory and live device telemetry injection.
+
+### Supported Slash Commands:
+- `/help`, `/?` — Display slash command reference manual.
+- `/status` — Render real-time system telemetry HUD (storage, RAM, shields, active daemons).
+- `/model` — Switch AI provider, choose local/cloud model, or update API credentials.
+- `/inspect` — Audit hardware capacity and get offline Ollama model recommendations.
+- `/clean` — Execute safe cache purge directly from chat.
+- `/hunt [MB]` — Run bloat directory hunter (default: 100MB).
+- `/doctor` — Run diagnostic health check.
+- `/repair` — Auto-heal broken dependencies and fix package issues.
+- `/vault` — List shielded directories and active preservation rules.
+- `/copy` — Copy the latest AI response directly to Android/system clipboard.
+- `/export [name]` — Export the full conversation transcript as Markdown to `~/.config/termux_sentinel/transcripts/`.
+- `/clear`, `/reset` — Clear conversation context and multi-turn memory.
+- `/sh <cmd>`, `!<cmd>` — Run a local shell command and inject its output directly into the chat for instant analysis.
+- `/exit`, `/quit` — Exit AI Chat Studio cleanly.
 
 ---
 
